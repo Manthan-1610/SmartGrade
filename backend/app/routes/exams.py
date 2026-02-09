@@ -203,7 +203,7 @@ async def create_exam(
         )
         session.add(question)
     
-    session.commit()
+    session.flush()  # Write to DB within transaction
     session.refresh(exam)
     
     logger.info(f"Created exam {exam.id} with {len(request.questions)} questions")
@@ -242,7 +242,7 @@ async def delete_exam(
     
     exam_title = exam.title
     session.delete(exam)
-    session.commit()
+    # Commit handled by session dependency
     
     logger.info(f"Deleted exam: {exam_title} ({exam_id})")
     

@@ -101,8 +101,14 @@ def deskew_image(gray_img: np.ndarray) -> np.ndarray:
     # Use median angle to be robust against outliers
     median_angle = np.median(angles)
     
-    # Only deskew if angle is significant but not too large
-    if abs(median_angle) < 0.5 or abs(median_angle) > 15:
+    # Only deskew if angle is significant (>= 0.5 degrees)
+    # Skip very small angles that don't need correction
+    if abs(median_angle) < 0.5:
+        return gray_img
+    
+    # For very large angles (> 45 degrees), the detection might be wrong
+    # This is already filtered above, but double-check
+    if abs(median_angle) > 45:
         return gray_img
     
     # Rotate image to correct skew

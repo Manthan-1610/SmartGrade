@@ -7,10 +7,12 @@ import httpx
 from typing import Optional
 from fastapi import APIRouter, Depends, Request, status, Response
 from fastapi.responses import RedirectResponse
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlmodel import Session
 
 from ..config import get_settings
 from ..database import get_session
+from ..dependencies import security
 from ..models import UserRole
 from ..schemas.auth import (
     TeacherSignupRequest,
@@ -317,9 +319,10 @@ async def google_callback(
     summary="Get current user",
     description="Get the currently authenticated user's profile."
 )
-async def get_current_user(
+async def get_me(
     request: Request,
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
 ) -> UserResponse:
     """
     Get current authenticated user's profile.
@@ -328,5 +331,5 @@ async def get_current_user(
     """
     from ..dependencies import get_current_user as get_user_dep
     
-    user = await get_user_dep(request, session)
+    user = await get_user_dep(request, session, credentials)
     return UserResponse.model_validate(user)

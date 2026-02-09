@@ -196,7 +196,7 @@ class AuthService:
         )
         
         session.add(user)
-        session.commit()
+        session.flush()  # Write to DB within transaction
         session.refresh(user)
         
         logger.info(f"Registered new user: {email} as {role.value}")
@@ -243,7 +243,7 @@ class AuthService:
         
         # Update last login
         user.last_login_at = datetime.utcnow()
-        session.commit()
+        # Commit handled by session dependency
         
         logger.info(f"User authenticated: {email}")
         return user
@@ -285,7 +285,7 @@ class AuthService:
             ip_address=ip_address
         )
         session.add(refresh_token)
-        session.commit()
+        session.flush()  # Ensure token is written before returning
         
         return access_token, refresh_token_str
     
@@ -358,7 +358,7 @@ class AuthService:
         
         if refresh_token:
             refresh_token.is_revoked = True
-            session.commit()
+            # Commit handled by session dependency
             logger.info(f"Revoked refresh token for user {refresh_token.user_id}")
     
     def revoke_all_user_tokens(
@@ -375,15 +375,14 @@ class AuthService:
         """
         tokens = session.exec(
             select(RefreshToken).where(
-                RefreshToken.user_id == user_id,
-                RefreshToken.is_revoked == False
+                (RefreshToken.user_id == user_id) & (RefreshToken.is_revoked == False)
             )
         ).all()
         
         for token in tokens:
             token.is_revoked = True
         
-        session.commit()
+        # Commit handled by session dependency
         logger.info(f"Revoked all tokens for user {user_id}")
     
     # ============ Google OAuth ============
@@ -416,7 +415,7 @@ class AuthService:
         
         if user:
             user.last_login_at = datetime.utcnow()
-            session.commit()
+            # Commit handled by session dependency
             return user
         
         # Check by email (user might have registered with email first)
@@ -429,7 +428,7 @@ class AuthService:
             user.google_id = google_id
             user.auth_provider = AuthProvider.GOOGLE.value
             user.last_login_at = datetime.utcnow()
-            session.commit()
+            # Commit handled by session dependency
             return user
         
         # Create new user
@@ -443,7 +442,7 @@ class AuthService:
         )
         
         session.add(user)
-        session.commit()
+        session.flush()  # Write to DB within transaction
         session.refresh(user)
         
         logger.info(f"Created Google user: {email} as {role.value}")

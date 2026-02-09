@@ -33,6 +33,10 @@ async def lifespan(app: FastAPI):
     logger.info(f"Environment: {settings.environment}")
     
     try:
+        # Validate required configuration before starting
+        settings.validate_required_settings()
+        logger.info("Configuration validated successfully")
+        
         init_db()
         logger.info("Application startup complete")
     except Exception as e:

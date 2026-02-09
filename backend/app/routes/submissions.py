@@ -235,7 +235,7 @@ async def digitize_submission(
         logger.error(f"AI extraction failed: {e}")
         # Update status to failed
         submission.status = "failed"
-        session.commit()
+        session.flush()  # Ensure failed status is written before raising
         raise ExternalServiceException("AI Vision", "Failed to extract text from image")
     
     # Create question lookup
@@ -256,7 +256,7 @@ async def digitize_submission(
     
     # Update submission status
     submission.status = "pending_verification"
-    session.commit()
+    # Commit handled by session dependency
     
     logger.info(
         f"Created submission {submission_uuid} with "
@@ -443,7 +443,7 @@ async def verify_submission(
     submission.status = "verified"
     submission.updated_at = datetime.utcnow()
     
-    session.commit()
+    session.flush()  # Write to DB within transaction
     session.refresh(submission)
     
     logger.info(f"Submission {submission_id} verified successfully")
