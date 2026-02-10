@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, status
 from sqlmodel import Session, select
 
 from ..database import get_session
-from ..models import Exam, Question
+from ..models import Exam, Question, User
 from ..schemas import (
     ExamResponse,
     ExamListResponse,
@@ -18,6 +18,7 @@ from ..schemas import (
     SuccessResponse
 )
 from ..exceptions import NotFoundException, ValidationException
+from ..dependencies import get_current_user
 from ..logging_config import get_logger
 
 router = APIRouter()
@@ -134,7 +135,8 @@ async def get_exam(
 )
 async def create_exam(
     request: FinalizeExamRequest,
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
 ) -> ExamResponse:
     """
     Create and finalize a new exam.
@@ -145,6 +147,7 @@ async def create_exam(
     Args:
         request: Exam creation request with questions and rubrics.
         session: Database session (injected).
+        current_user: Authenticated user creating the exam (injected).
         
     Returns:
         Created exam data.
@@ -170,12 +173,13 @@ async def create_exam(
     
     logger.info(f"Creating exam: {request.title} ({total_marks} marks)")
     
-    # Create exam
+    # Create exam with current user as creator
     exam = Exam(
         title=request.title.strip(),
         subject=request.subject.strip(),
         total_marks=total_marks,
-        is_finalized=True
+        is_finalized=True,
+        created_by=current_user.id
     )
     session.add(exam)
     session.flush()

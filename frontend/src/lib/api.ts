@@ -232,7 +232,7 @@ export const api = {
   ): Promise<ExamResponse> {
     const response = await fetch(`${API_BASE}/exams`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         title: data.title,
         subject: data.subject,
@@ -252,7 +252,9 @@ export const api = {
    * Get all exams (list view)
    */
   async getExams(): Promise<ExamListItem[]> {
-    const response = await fetch(`${API_BASE}/exams`);
+    const response = await fetch(`${API_BASE}/exams`, {
+      headers: getAuthHeaders(),
+    });
     return handleResponse<ExamListItem[]>(response);
   },
 
@@ -260,7 +262,9 @@ export const api = {
    * Get single exam by ID
    */
   async getExam(id: string): Promise<ExamResponse> {
-    const response = await fetch(`${API_BASE}/exams/${id}`);
+    const response = await fetch(`${API_BASE}/exams/${id}`, {
+      headers: getAuthHeaders(),
+    });
     return handleResponse<ExamResponse>(response);
   },
 
@@ -306,6 +310,10 @@ export const api = {
       });
 
       xhr.open('POST', `${API_BASE}/digitize-submission`);
+      const token = tokenManager.getAccessToken();
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
       xhr.send(formData);
     });
   },
@@ -314,7 +322,9 @@ export const api = {
    * Get submission by ID
    */
   async getSubmission(id: string): Promise<SubmissionResponse> {
-    const response = await fetch(`${API_BASE}/submissions/${id}`);
+    const response = await fetch(`${API_BASE}/submissions/${id}`, {
+      headers: getAuthHeaders(),
+    });
     return handleResponse<SubmissionResponse>(response);
   },
 
@@ -322,7 +332,9 @@ export const api = {
    * Get all submissions for an exam
    */
   async getExamSubmissions(examId: string): Promise<SubmissionListItem[]> {
-    const response = await fetch(`${API_BASE}/exams/${examId}/submissions`);
+    const response = await fetch(`${API_BASE}/exams/${examId}/submissions`, {
+      headers: getAuthHeaders(),
+    });
     return handleResponse<SubmissionListItem[]>(response);
   },
 
@@ -335,7 +347,7 @@ export const api = {
   ): Promise<SubmissionResponse> {
     const response = await fetch(`${API_BASE}/submissions/${submissionId}/verify`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ answers }),
     });
     return handleResponse<SubmissionResponse>(response);

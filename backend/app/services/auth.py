@@ -23,8 +23,8 @@ from ..exceptions import (
 settings = get_settings()
 logger = get_logger(__name__)
 
-# Password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Password hashing context - using argon2 for better security and support for longer passwords
+pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 
 class AuthService:
@@ -35,10 +35,10 @@ class AuthService:
     @staticmethod
     def hash_password(password: str) -> str:
         """
-        Hash a password using bcrypt.
+        Hash a password using argon2.
         
         Args:
-            password: Plain text password.
+            password: Plain text password (supports unlimited length).
             
         Returns:
             Hashed password string.
@@ -51,7 +51,7 @@ class AuthService:
         Verify a password against its hash.
         
         Args:
-            plain_password: Plain text password to verify.
+            plain_password: Plain text password to verify (supports unlimited length).
             hashed_password: Stored hash to verify against.
             
         Returns:

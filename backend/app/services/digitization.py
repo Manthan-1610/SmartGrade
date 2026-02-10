@@ -6,18 +6,28 @@ import google.generativeai as genai
 from typing import List
 from ..config import get_settings
 from ..schemas import ExtractedAnswer
+from ..logging_config import get_logger
 
 settings = get_settings()
+logger = get_logger(__name__)
 
 
 class DigitizationService:
     """Service for extracting text from handwritten exam submissions."""
     
     def __init__(self):
-        if settings.gemini_api_key:
+        self.model = None
+        
+        if not settings.gemini_api_key:
+            logger.warning("GEMINI_API_KEY is not configured. Using mock responses for OCR.")
+            return
+        
+        try:
             genai.configure(api_key=settings.gemini_api_key)
             self.model = genai.GenerativeModel(settings.gemini_model)
-        else:
+            logger.info(f"Gemini Vision initialized with model: {settings.gemini_model}")
+        except Exception as e:
+            logger.error(f"Failed to initialize Gemini Vision: {e}")
             self.model = None
     
     def extract_answers(
@@ -38,6 +48,7 @@ class DigitizationService:
             List of ExtractedAnswer objects
         """
         if not self.model:
+            logger.warning("Gemini Vision not available. Returning mock responses.")
             return self._generate_mock_response(questions)
         
         prompt = self._build_extraction_prompt(questions)
@@ -53,13 +64,20 @@ class DigitizationService:
             response = self.model.generate_content(
                 [prompt, image_part],
                 generation_config=genai.GenerationConfig(
-                    response_mime_type="application/json",
                     temperature=0.1,  # Very low temperature for accuracy
                 )
             )
             
-            # Parse response
-            result = json.loads(response.text)
+            # Parse response - extract JSON from text (may be wrapped in markdown code blocks)
+            response_text = response.text.strip()
+            if response_text.startswith('```json'):
+                response_text = response_text[7:]  # Remove ```json
+            if response_text.startswith('```'):
+                response_text = response_text[3:]  # Remove ```
+            if response_text.endswith('```'):
+                response_text = response_text[:-3]  # Remove trailing ```
+            
+            result = json.loads(response_text)
             answers = []
             
             for ans in result.get("answers", []):
@@ -69,10 +87,11 @@ class DigitizationService:
                     confidence=min(max(ans.get("confidence", 0.5), 0.0), 1.0)
                 ))
             
+            logger.info(f"Successfully extracted {len(answers)} answers using Gemini Vision")
             return answers
             
         except Exception as e:
-            print(f"Gemini Vision API error: {e}")
+            logger.error(f"Gemini Vision API error: {e}. Falling back to mock responses.")
             return self._generate_mock_response(questions)
     
     def _build_extraction_prompt(self, questions: List[dict]) -> str:
