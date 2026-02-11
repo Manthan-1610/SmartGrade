@@ -1,2 +1,2 @@
 ﻿# Routes package
-from . import exams, verify, submissions, auth
+from . import exams, verify, submissions, auth, organizations, classes, grading

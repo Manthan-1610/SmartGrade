@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     # Authentication - MUST be set in .env for production
     jwt_secret_key: str = ""
     jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
+    access_token_expire_minutes: int = 2880
     refresh_token_expire_days: int = 7
     
     # Google OAuth - Optional, set in .env if using Google Sign-In

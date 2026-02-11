@@ -1,31 +1,57 @@
 """
-Pydantic schemas package.
+SmartGrade API Schemas.
 
-Re-exports all schemas for convenient importing.
+Re-exports all schemas for convenient imports throughout the application.
 """
-# Re-export from auth schemas
+# Base schemas
+from .exam import SuccessResponse, PaginatedResponse
+
+# Auth schemas
 from .auth import (
     TeacherSignupRequest,
     StudentSignupRequest,
     LoginRequest,
-    RefreshTokenRequest,
-    GoogleAuthRequest,
-    GoogleAuthCallbackRequest,
-    UserResponse,
     AuthTokenResponse,
     TokenRefreshResponse,
-    MessageResponse
+    MessageResponse,
+    UserResponse,
+    RefreshTokenRequest,
+    GoogleAuthCallbackRequest,
 )
 
-# Re-export from exam schemas
+# Organization schemas
+from .organization import (
+    OrganizationCreate,
+    OrganizationUpdate,
+    OrganizationResponse,
+    OrganizationDetailResponse,
+    OrganizationMemberResponse,
+    AddMemberRequest,
+)
+
+# Classroom schemas
+from .classroom import (
+    ClassCreate,
+    ClassUpdate,
+    ClassResponse,
+    ClassDetailResponse,
+    InviteStudentRequest,
+    InvitationResponse,
+    InvitationActionRequest,
+    EnrollmentResponse,
+    EnrollmentStatusUpdate,
+)
+
+# Exam schemas
 from .exam import (
-    SuccessResponse,
-    PaginatedResponse,
     QuestionCreate,
     QuestionResponse,
     ExamCreate,
+    ExamUpdate,
     ExamResponse,
     ExamListResponse,
+    ExamExtensionCreate,
+    ExamExtensionResponse,
     QuestionForVerification,
     VerifyTemplateRequest,
     AIQuestionRubric,
@@ -36,5 +62,68 @@ from .exam import (
     StudentAnswerResponse,
     SubmissionResponse,
     VerifySubmissionRequest,
-    SubmissionListResponse
+    SubmissionListResponse,
+    GradeAnswerRequest,
+    BulkGradeRequest,
+    PublishMarksRequest,
+    StudentExamResult,
+    DigitalReceiptResponse,
 )
+
+__all__ = [
+    # Base
+    "SuccessResponse",
+    "PaginatedResponse",
+    # Auth
+    "TeacherSignupRequest",
+    "StudentSignupRequest",
+    "LoginRequest",
+    "AuthTokenResponse",
+    "TokenRefreshResponse",
+    "MessageResponse",
+    "UserResponse",
+    "RefreshTokenRequest",
+    "GoogleAuthCallbackRequest",
+    # Organization
+    "OrganizationCreate",
+    "OrganizationUpdate",
+    "OrganizationResponse",
+    "OrganizationDetailResponse",
+    "OrganizationMemberResponse",
+    "AddMemberRequest",
+    # Classroom
+    "ClassCreate",
+    "ClassUpdate",
+    "ClassResponse",
+    "ClassDetailResponse",
+    "InviteStudentRequest",
+    "InvitationResponse",
+    "InvitationActionRequest",
+    "EnrollmentResponse",
+    "EnrollmentStatusUpdate",
+    # Exam
+    "QuestionCreate",
+    "QuestionResponse",
+    "ExamCreate",
+    "ExamUpdate",
+    "ExamResponse",
+    "ExamListResponse",
+    "ExamExtensionCreate",
+    "ExamExtensionResponse",
+    "QuestionForVerification",
+    "VerifyTemplateRequest",
+    "AIQuestionRubric",
+    "VerifyTemplateResponse",
+    "FinalizeExamRequest",
+    "ExtractedAnswer",
+    "DigitizeResponse",
+    "StudentAnswerResponse",
+    "SubmissionResponse",
+    "VerifySubmissionRequest",
+    "SubmissionListResponse",
+    "GradeAnswerRequest",
+    "BulkGradeRequest",
+    "PublishMarksRequest",
+    "StudentExamResult",
+    "DigitalReceiptResponse",
+]

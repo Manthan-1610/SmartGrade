@@ -1,253 +1,176 @@
 """
-Exam management endpoints.
+API routes for exam management.
 
-Provides CRUD operations for exam templates including questions and AI rubrics.
+Provides endpoints for exam CRUD, extensions, and exam lifecycle.
 """
-from typing import List
-from uuid import UUID
-from fastapi import APIRouter, Depends, status
-from sqlmodel import Session, select
+import uuid
+from typing import List, Optional
+from fastapi import APIRouter, Depends, Query
+from sqlmodel import Session
 
 from ..database import get_session
-from ..models import Exam, Question, User
-from ..schemas import (
+from ..dependencies import require_teacher, require_student, get_current_user
+from ..models import User
+from ..schemas.exam import (
+    ExamCreate,
+    ExamUpdate,
     ExamResponse,
     ExamListResponse,
+    ExamExtensionCreate,
+    ExamExtensionResponse,
     FinalizeExamRequest,
-    QuestionResponse,
-    SuccessResponse
+    SuccessResponse,
 )
-from ..exceptions import NotFoundException, ValidationException
-from ..dependencies import get_current_user
-from ..logging_config import get_logger
+from ..services import exam as exam_service
 
-router = APIRouter()
-logger = get_logger(__name__)
+router = APIRouter(prefix="/exams", tags=["Exams"])
 
 
-def _build_exam_response(exam: Exam) -> ExamResponse:
-    """Build standardized exam response from model."""
-    return ExamResponse(
-        id=exam.id,
-        title=exam.title,
-        subject=exam.subject,
-        total_marks=exam.total_marks,
-        is_finalized=exam.is_finalized,
-        created_at=exam.created_at,
-        updated_at=exam.updated_at,
-        questions=[
-            QuestionResponse(
-                id=q.id,
-                question_number=q.question_number,
-                text=q.text,
-                max_marks=q.max_marks,
-                ideal_answer=q.ideal_answer,
-                ai_rubric=q.ai_rubric
-            )
-            for q in sorted(exam.questions, key=lambda x: x.question_number)
-        ]
-    )
+# ============ Teacher Exam Management ============
 
-
-@router.get(
-    "/exams",
-    response_model=List[ExamListResponse],
-    summary="List all exams",
-    description="Retrieve a list of all exams with basic information and question count."
-)
-async def list_exams(
-    session: Session = Depends(get_session),
-    finalized_only: bool = False
-) -> List[ExamListResponse]:
-    """
-    List all exams with basic info.
-    
-    Args:
-        session: Database session (injected).
-        finalized_only: If True, only return finalized exams.
-        
-    Returns:
-        List of exams with question counts.
-    """
-    statement = select(Exam).order_by(Exam.created_at.desc())
-    
-    if finalized_only:
-        statement = statement.where(Exam.is_finalized == True)
-    
-    exams = session.exec(statement).all()
-    
-    logger.debug(f"Retrieved {len(exams)} exams")
-    
-    return [
-        ExamListResponse(
-            id=exam.id,
-            title=exam.title,
-            subject=exam.subject,
-            total_marks=exam.total_marks,
-            is_finalized=exam.is_finalized,
-            created_at=exam.created_at,
-            question_count=len(exam.questions)
-        )
-        for exam in exams
-    ]
-
-
-@router.get(
-    "/exams/{exam_id}",
+@router.post(
+    "/",
     response_model=ExamResponse,
-    summary="Get exam details",
-    description="Retrieve a single exam with all questions and rubrics."
+    status_code=201,
+    summary="Create an exam",
 )
-async def get_exam(
-    exam_id: UUID,
-    session: Session = Depends(get_session)
+async def create_exam(
+    data: ExamCreate,
+    current_user: User = Depends(require_teacher),
+    session: Session = Depends(get_session),
 ) -> ExamResponse:
-    """
-    Get a single exam with all questions.
-    
-    Args:
-        exam_id: Unique identifier of the exam.
-        session: Database session (injected).
-        
-    Returns:
-        Complete exam data with questions.
-        
-    Raises:
-        NotFoundException: If exam doesn't exist.
-    """
-    statement = select(Exam).where(Exam.id == exam_id)
-    exam = session.exec(statement).first()
-    
-    if not exam:
-        logger.warning(f"Exam not found: {exam_id}")
-        raise NotFoundException("Exam", exam_id)
-    
-    logger.debug(f"Retrieved exam: {exam.title}")
-    return _build_exam_response(exam)
+    """Create a new exam within a class."""
+    return exam_service.create_exam(data, current_user, session)
 
 
 @router.post(
-    "/exams",
+    "/finalize",
     response_model=ExamResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create and finalize exam",
-    description="Create a new exam with questions and AI-generated rubrics."
+    status_code=201,
+    summary="Create and finalize an exam",
 )
-async def create_exam(
-    request: FinalizeExamRequest,
+async def finalize_exam(
+    data: FinalizeExamRequest,
+    current_user: User = Depends(require_teacher),
     session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_user)
 ) -> ExamResponse:
-    """
-    Create and finalize a new exam.
-    
-    This endpoint is called after the teacher has reviewed and approved
-    the AI-generated rubric. The exam is immediately marked as finalized.
-    
-    Args:
-        request: Exam creation request with questions and rubrics.
-        session: Database session (injected).
-        current_user: Authenticated user creating the exam (injected).
-        
-    Returns:
-        Created exam data.
-        
-    Raises:
-        ValidationException: If validation fails.
-    """
-    # Validation
-    if not request.questions:
-        raise ValidationException(
-            "At least one question is required",
-            detail="Exam must contain at least one question"
-        )
-    
-    if not request.title.strip():
-        raise ValidationException("Exam title cannot be empty")
-    
-    if not request.subject.strip():
-        raise ValidationException("Subject cannot be empty")
-    
-    # Calculate total marks
-    total_marks = sum(q.max_marks for q in request.questions)
-    
-    logger.info(f"Creating exam: {request.title} ({total_marks} marks)")
-    
-    # Create exam with current user as creator
-    exam = Exam(
-        title=request.title.strip(),
-        subject=request.subject.strip(),
-        total_marks=total_marks,
-        is_finalized=True,
-        created_by=current_user.id
-    )
-    session.add(exam)
-    session.flush()
-    
-    # Create questions with AI rubrics
-    ai_rubrics_map = {r.question_number: r for r in request.ai_rubrics}
-    
-    for q in request.questions:
-        ai_rubric = ai_rubrics_map.get(q.question_number)
-        rubric_text = None
-        
-        if ai_rubric:
-            rubric_text = (
-                f"Key concepts: {', '.join(ai_rubric.key_concepts)}. "
-                f"{ai_rubric.grading_criteria}"
-            )
-        
-        question = Question(
-            exam_id=exam.id,
-            question_number=q.question_number,
-            text=q.text.strip(),
-            max_marks=q.max_marks,
-            ideal_answer=q.ideal_answer.strip(),
-            ai_rubric=rubric_text
-        )
-        session.add(question)
-    
-    session.flush()  # Write to DB within transaction
-    session.refresh(exam)
-    
-    logger.info(f"Created exam {exam.id} with {len(request.questions)} questions")
-    
-    return _build_exam_response(exam)
+    """Create and finalize an exam with AI rubrics."""
+    return exam_service.finalize_exam(data, current_user, session)
+
+
+@router.get(
+    "/teaching",
+    response_model=List[ExamListResponse],
+    summary="List exams I created",
+)
+async def list_teacher_exams(
+    class_id: Optional[uuid.UUID] = Query(None, description="Filter by class"),
+    current_user: User = Depends(require_teacher),
+    session: Session = Depends(get_session),
+) -> List[ExamListResponse]:
+    """Get all exams created by the current teacher."""
+    return exam_service.get_teacher_exams(current_user, session, class_id)
+
+
+@router.get(
+    "/student",
+    response_model=List[ExamListResponse],
+    summary="List my exams as a student",
+)
+async def list_student_exams(
+    class_id: Optional[uuid.UUID] = Query(None, description="Filter by class"),
+    current_user: User = Depends(require_student),
+    session: Session = Depends(get_session),
+) -> List[ExamListResponse]:
+    """Get exams from enrolled classes."""
+    return exam_service.get_student_exams(current_user, class_id, session)
+
+
+@router.get(
+    "/class/{class_id}",
+    response_model=List[ExamListResponse],
+    summary="List exams for a class",
+)
+async def list_class_exams(
+    class_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> List[ExamListResponse]:
+    """Get all exams for a specific class."""
+    return exam_service.get_class_exams(class_id, current_user, session)
+
+
+@router.get(
+    "/{exam_id}",
+    response_model=ExamResponse,
+    summary="Get exam details",
+)
+async def get_exam(
+    exam_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> ExamResponse:
+    """Get detailed information about an exam."""
+    return exam_service.get_exam_response(exam_id, current_user, session)
+
+
+@router.put(
+    "/{exam_id}",
+    response_model=ExamResponse,
+    summary="Update an exam",
+)
+async def update_exam(
+    exam_id: uuid.UUID,
+    data: ExamUpdate,
+    current_user: User = Depends(require_teacher),
+    session: Session = Depends(get_session),
+) -> ExamResponse:
+    """Update an exam. Cannot update if finalized."""
+    return exam_service.update_exam(exam_id, data, current_user, session)
 
 
 @router.delete(
-    "/exams/{exam_id}",
+    "/{exam_id}",
     response_model=SuccessResponse,
-    summary="Delete exam",
-    description="Delete an exam and all associated questions."
+    summary="Delete an exam",
 )
 async def delete_exam(
-    exam_id: UUID,
-    session: Session = Depends(get_session)
+    exam_id: uuid.UUID,
+    current_user: User = Depends(require_teacher),
+    session: Session = Depends(get_session),
 ) -> SuccessResponse:
-    """
-    Delete an exam and all its questions.
-    
-    Args:
-        exam_id: Unique identifier of the exam.
-        session: Database session (injected).
-        
-    Returns:
-        Success confirmation message.
-        
-    Raises:
-        NotFoundException: If exam doesn't exist.
-    """
-    statement = select(Exam).where(Exam.id == exam_id)
-    exam = session.exec(statement).first()
-    
-    if not exam:
-        raise NotFoundException("Exam", exam_id)
-    
-    exam_title = exam.title
-    session.delete(exam)
-    # Commit handled by session dependency
-    
-    logger.info(f"Deleted exam: {exam_title} ({exam_id})")
-    
+    """Delete a draft exam."""
+    exam_service.delete_exam(exam_id, current_user, session)
     return SuccessResponse(message="Exam deleted successfully")
+
+
+# ============ Extensions ============
+
+@router.post(
+    "/{exam_id}/extensions",
+    response_model=ExamExtensionResponse,
+    status_code=201,
+    summary="Grant a student an extension",
+)
+async def grant_extension(
+    exam_id: uuid.UUID,
+    data: ExamExtensionCreate,
+    current_user: User = Depends(require_teacher),
+    session: Session = Depends(get_session),
+) -> ExamExtensionResponse:
+    """Grant an individual exam time extension to a student."""
+    return exam_service.grant_extension(exam_id, data, current_user, session)
+
+
+@router.get(
+    "/{exam_id}/extensions",
+    response_model=List[ExamExtensionResponse],
+    summary="List exam extensions",
+)
+async def list_extensions(
+    exam_id: uuid.UUID,
+    current_user: User = Depends(require_teacher),
+    session: Session = Depends(get_session),
+) -> List[ExamExtensionResponse]:
+    """Get all extensions granted for an exam."""
+    return exam_service.get_exam_extensions(exam_id, current_user, session)

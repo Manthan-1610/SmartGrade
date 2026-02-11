@@ -12,7 +12,7 @@ from .config import get_settings
 from .database import init_db
 from .logging_config import setup_logging, get_logger
 from .exceptions import SmartGradeException
-from .routes import exams, verify, submissions, auth
+from .routes import exams, verify, submissions, auth, organizations, classes, grading
 
 # Initialize settings and logging
 settings = get_settings()
@@ -153,6 +153,26 @@ app.include_router(
     submissions.router,
     prefix="/api",
     tags=["Submissions"]
+)
+app.include_router(
+    organizations.router,
+    prefix="/api",
+    tags=["Organizations"]
+)
+app.include_router(
+    classes.router,
+    prefix="/api",
+    tags=["Classes"]
+)
+app.include_router(
+    classes.invitations_router,
+    prefix="/api",
+    tags=["Invitations"]
+)
+app.include_router(
+    grading.router,
+    prefix="/api",
+    tags=["Grading"]
 )
 
 

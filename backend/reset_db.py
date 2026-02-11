@@ -7,7 +7,13 @@ while preserving all user accounts.
 from sqlalchemy import text
 from sqlmodel import SQLModel
 from app.database import engine
-from app.models import User, RefreshToken, Question, Exam, Submission, StudentAnswer
+from app.models import (
+    User, RefreshToken,
+    Organization, OrganizationMember,
+    Class, ClassInvitation, ClassEnrollment,
+    Exam, Question, ExamExtension,
+    Submission, StudentAnswer, DigitalReceipt,
+)
 from app.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -26,11 +32,18 @@ def reset_database_preserve_users():
         with engine.connect() as conn:
             # Drop tables in order of dependencies (reverse of creation order)
             tables_to_drop = [
-                "student_answers",  # Depends on questions and submissions
-                "submissions",      # Depends on exams
-                "questions",        # Depends on exams
-                "exams",           # Depends on users (created_by)
-                "refresh_tokens",  # Depends on users
+                "digital_receipts",      # Depends on submissions, users, exams
+                "student_answers",       # Depends on questions and submissions
+                "submissions",           # Depends on exams and users
+                "exam_extensions",       # Depends on exams and users
+                "questions",             # Depends on exams
+                "exams",                 # Depends on classes and users
+                "class_enrollments",     # Depends on classes and users
+                "class_invitations",     # Depends on classes and users
+                "classes",               # Depends on organizations and users
+                "organization_members",  # Depends on organizations and users
+                "organizations",         # Depends on users
+                "refresh_tokens",        # Depends on users
             ]
             
             logger.info("Dropping dependent tables (preserving users table)...")
@@ -50,7 +63,9 @@ def reset_database_preserve_users():
         logger.info("All dependent tables recreated successfully")
         
         print("\n✓ Database reset complete!")
-        print("Tables reset: exams, questions, submissions, student_answers, refresh_tokens")
+        print("Tables reset: organizations, organization_members, classes, class_invitations,")
+        print("  class_enrollments, exams, questions, exam_extensions, submissions,")
+        print("  student_answers, digital_receipts, refresh_tokens")
         print("Preserved: users table with all accounts intact")
         
     except Exception as e:
