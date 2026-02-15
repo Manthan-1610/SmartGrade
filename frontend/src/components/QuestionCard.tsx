@@ -1,8 +1,9 @@
 /**
  * QuestionCard Component
  * 
- * Displays and edits a single exam question with marks and ideal answer.
- * Used in the exam template creation flow.
+ * Displays and edits a single exam question with customizable question number,
+ * marks, and ideal answer. Supports flexible question numbering formats
+ * like '1', '1a', 'I', 'Q1', etc.
  */
 import { memo } from 'react';
 import { Trash2, GripVertical } from 'lucide-react';
@@ -58,7 +59,7 @@ export const QuestionCard = memo(function QuestionCard({
             <GripVertical className="w-5 h-5" aria-hidden="true" />
           </button>
           <Badge variant="primary">
-            Question {question.question_number}
+            Q{question.question_number || '?'}
           </Badge>
         </div>
         
@@ -76,6 +77,41 @@ export const QuestionCard = memo(function QuestionCard({
         )}
       </header>
 
+      {/* Question Number and Marks Row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
+        {/* Question Number */}
+        <div>
+          <Input
+            label="Question #"
+            required
+            value={question.question_number}
+            onChange={(e) => handleChange('question_number', e.target.value)}
+            placeholder="1, 1a, I..."
+            maxLength={20}
+          />
+          <p className="text-xs text-text-muted mt-1">
+            e.g., 1, 1a, I, Q1
+          </p>
+        </div>
+
+        {/* Max Marks */}
+        <div>
+          <Input
+            label="Max Marks"
+            required
+            type="number"
+            min={1}
+            step={0.5}
+            value={question.max_marks || ''}
+            onChange={(e) => handleChange('max_marks', parseFloat(e.target.value) || 0)}
+            placeholder="5"
+          />
+        </div>
+
+        {/* Empty space for layout on larger screens */}
+        <div className="hidden sm:block sm:col-span-2" />
+      </div>
+
       {/* Question Text */}
       <div className="mb-5">
         <Textarea
@@ -88,32 +124,30 @@ export const QuestionCard = memo(function QuestionCard({
         />
       </div>
 
-      {/* Marks and Ideal Answer Row */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-        {/* Max Marks */}
-        <div>
-          <Input
-            label="Max Marks"
-            required
-            type="number"
-            min={1}
-            value={question.max_marks || ''}
-            onChange={(e) => handleChange('max_marks', parseInt(e.target.value) || 0)}
-            placeholder="5"
-          />
-        </div>
+      {/* Ideal Answer */}
+      <div className="mb-5">
+        <Textarea
+          label="Ideal Answer"
+          required
+          value={question.ideal_answer}
+          onChange={(e) => handleChange('ideal_answer', e.target.value)}
+          placeholder="The expected correct answer for grading reference. The AI will use this to understand the key concepts required for full marks."
+          rows={4}
+        />
+      </div>
 
-        {/* Ideal Answer */}
-        <div className="md:col-span-3">
-          <Textarea
-            label="Ideal Answer"
-            required
-            value={question.ideal_answer}
-            onChange={(e) => handleChange('ideal_answer', e.target.value)}
-            placeholder="The expected correct answer for grading reference..."
-            rows={3}
-          />
-        </div>
+      {/* Optional Evaluation Rubric */}
+      <div>
+        <Textarea
+          label="Evaluation Hints (Optional)"
+          value={question.evaluation_rubric || ''}
+          onChange={(e) => handleChange('evaluation_rubric', e.target.value)}
+          placeholder="Optional hints for the AI grader, e.g., 'Award partial marks for mentioning photosynthesis even without the complete explanation.'"
+          rows={2}
+        />
+        <p className="text-xs text-text-muted mt-1">
+          Additional guidance for the AI on how to evaluate answers
+        </p>
       </div>
     </article>
   );

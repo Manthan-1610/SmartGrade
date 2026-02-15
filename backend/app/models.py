@@ -367,6 +367,7 @@ class Submission(SQLModel, table=True):
     is_verified: bool = Field(default=False)
 
     # Timestamps
+    server_received_at: datetime = Field(default_factory=datetime.utcnow)
     submitted_at: datetime = Field(default_factory=datetime.utcnow)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

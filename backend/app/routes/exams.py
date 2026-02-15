@@ -16,6 +16,7 @@ from ..schemas.exam import (
     ExamUpdate,
     ExamResponse,
     ExamListResponse,
+    ExamTimeInfo,
     ExamExtensionCreate,
     ExamExtensionResponse,
     FinalizeExamRequest,
@@ -84,6 +85,25 @@ async def list_student_exams(
 ) -> List[ExamListResponse]:
     """Get exams from enrolled classes."""
     return exam_service.get_student_exams(current_user, class_id, session)
+
+
+@router.get(
+    "/{exam_id}/time-info",
+    response_model=ExamTimeInfo,
+    summary="Get exam time info for student",
+)
+async def get_exam_time_info(
+    exam_id: uuid.UUID,
+    current_user: User = Depends(require_student),
+    session: Session = Depends(get_session),
+) -> ExamTimeInfo:
+    """
+    Get exam timing information including effective deadline.
+    
+    Checks for student-specific extensions and returns the effective
+    deadline for countdown timer display.
+    """
+    return exam_service.get_exam_time_info(exam_id, current_user, session)
 
 
 @router.get(

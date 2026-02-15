@@ -13,7 +13,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { ExamForm } from '@/components/ExamForm';
 import { ReviewConfirm } from '@/components/ReviewConfirm';
 import { api } from '@/lib/api';
-import type { ExamFormData, VerifyTemplateResponse } from '@/lib/types';
+import type { ExamFormData, VerifyTemplateResponse, AIQuestionRubric } from '@/lib/types';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button, Alert } from '@/components/ui';
 import { CheckCircle2, ArrowLeft, Plus } from 'lucide-react';
@@ -38,12 +38,8 @@ export function CreateExam() {
     setError(null);
 
     try {
-      // Inject preselected class if not already set
-      const payload = preselectedClassId && !data.class_id
-        ? { ...data, class_id: preselectedClassId }
-        : data;
-      const rubric = await api.verifyTemplate(payload);
-      setExamData(payload);
+      const rubric = await api.verifyTemplate(data);
+      setExamData(data);
       setAiRubric(rubric);
       setStep('review');
     } catch (err) {
@@ -53,14 +49,14 @@ export function CreateExam() {
     }
   };
 
-  const handleConfirm = async () => {
-    if (!examData || !aiRubric) return;
+  const handleConfirm = async (editedRubrics: AIQuestionRubric[]) => {
+    if (!examData) return;
 
     setIsLoading(true);
     setError(null);
 
     try {
-      const saved = await api.finalizeExam(examData, aiRubric.questions);
+      const saved = await api.finalizeExam(examData, editedRubrics);
       setSavedExamId(saved.id);
       setStep('success');
     } catch (err) {
@@ -138,7 +134,11 @@ export function CreateExam() {
 
       {/* Step Content */}
       {step === 'form' && (
-        <ExamForm onSubmit={handleFormSubmit} isLoading={isLoading} />
+        <ExamForm 
+          onSubmit={handleFormSubmit} 
+          isLoading={isLoading}
+          preselectedClassId={preselectedClassId}
+        />
       )}
 
       {step === 'review' && examData && aiRubric && (

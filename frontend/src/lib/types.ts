@@ -149,12 +149,11 @@ export interface EnrollmentStatusUpdate {
 
 /**
  * Form-level question data used in the exam creation form.
- * `question_number` is kept as `number` for auto-incrementing form logic.
- * Converted to string when sent to the API.
+ * `question_number` is a string to support flexible formats: '1', '1a', 'I', etc.
  */
 export interface QuestionFormData {
   id: string;
-  question_number: number;
+  question_number: string;
   text: string;
   max_marks: number;
   ideal_answer: string;
@@ -243,6 +242,23 @@ export interface ExamListItem {
   created_at: string;
   question_count: number;
   submission_count: number;
+}
+
+/**
+ * Exam time information for countdown timer.
+ * Includes the student's effective deadline with any extensions.
+ */
+export interface ExamTimeInfo {
+  exam_id: string;
+  exam_title: string;
+  start_time: string | null;
+  end_time: string | null;
+  effective_deadline: string | null;
+  grace_period_minutes: number;
+  has_extension: boolean;
+  server_time: string;
+  is_open: boolean;
+  is_expired: boolean;
 }
 
 // ============ Exam Extension Types ============

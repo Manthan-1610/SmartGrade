@@ -16,6 +16,7 @@ import type {
   VerifyTemplateResponse,
   ExamResponse,
   ExamListItem,
+  ExamTimeInfo,
   AIQuestionRubric,
   DigitizeResponse,
   SubmissionResponse,
@@ -472,7 +473,7 @@ export const examsApi = {
         title: data.title,
         subject: data.subject,
         questions: data.questions.map((q) => ({
-          question_number: String(q.question_number),
+          question_number: q.question_number,
           text: q.text,
           max_marks: q.max_marks,
           ideal_answer: q.ideal_answer,
@@ -499,7 +500,7 @@ export const examsApi = {
         end_time: data.end_time || null,
         grace_period_minutes: data.grace_period_minutes ?? 5,
         questions: data.questions.map((q, idx) => ({
-          question_number: String(q.question_number),
+          question_number: q.question_number,
           text: q.text,
           max_marks: q.max_marks,
           ideal_answer: q.ideal_answer,
@@ -528,6 +529,14 @@ export const examsApi = {
       headers: getAuthHeaders(),
     });
     return handleResponse<ExamListItem[]>(res);
+  },
+
+  /** Get exam time info for countdown timer (student view). */
+  async getTimeInfo(examId: string): Promise<ExamTimeInfo> {
+    const res = await fetch(`${API_BASE}/exams/${examId}/time-info`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<ExamTimeInfo>(res);
   },
 
   /** List all exams for a specific class. */

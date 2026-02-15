@@ -1,10 +1,23 @@
+/**
+ * SubmitExam Page
+ * 
+ * Student exam submission flow:
+ * 1. Select exam → 2. Upload image/PDF → 3. Verify extracted text → 4. Success with receipt
+ * 
+ * Features:
+ * - Countdown timer with server time sync
+ * - Support for JPG, PNG, and PDF uploads
+ * - Digital receipt for submission verification
+ */
 import { useState, useEffect } from 'react';
 import { ImageCapture } from '@/components/ImageCapture';
 import { VerificationUI } from '@/components/VerificationUI';
-import { api } from '@/lib/api';
+import { CountdownTimer } from '@/components/CountdownTimer';
+import { api, examsApi } from '@/lib/api';
 import type { 
   ExamResponse, 
   ExamListItem,
+  ExamTimeInfo,
   ExtractedAnswer, 
   VerifiedAnswer 
 } from '@/lib/types';
@@ -14,8 +27,12 @@ import {
   Upload,
   FileText,
   ArrowLeft,
-  User
+  User,
+  Copy,
+  Check,
+  Shield
 } from 'lucide-react';
+import { Alert } from '@/components/ui';
 
 type Step = 'select-exam' | 'capture' | 'verify' | 'success';
 
@@ -28,13 +45,16 @@ export function SubmitExam() {
   // Data
   const [exams, setExams] = useState<ExamListItem[]>([]);
   const [selectedExam, setSelectedExam] = useState<ExamResponse | null>(null);
+  const [timeInfo, setTimeInfo] = useState<ExamTimeInfo | null>(null);
   const [studentName, setStudentName] = useState('');
   const [studentId, setStudentId] = useState('');
   
   // Submission data
   const [submissionId, setSubmissionId] = useState<string | null>(null);
+  const [digitalReceipt, setDigitalReceipt] = useState<string | null>(null);
   const [extractedAnswers, setExtractedAnswers] = useState<ExtractedAnswer[]>([]);
   const [imageUrl, setImageUrl] = useState<string>('');
+  const [copied, setCopied] = useState(false);
 
   // Load exams on mount
   useEffect(() => {
@@ -43,7 +63,8 @@ export function SubmitExam() {
 
   const loadExams = async () => {
     try {
-      const data = await api.getExams();
+      // Use student endpoint to get exams from enrolled classes
+      const data = await examsApi.listStudent();
       // Only show finalized exams
       setExams(data.filter(e => e.is_finalized));
     } catch (err) {
@@ -53,15 +74,38 @@ export function SubmitExam() {
 
   const handleSelectExam = async (examId: string) => {
     setIsLoading(true);
+    setError(null);
     try {
-      const exam = await api.getExam(examId);
+      // Fetch exam details and time info in parallel
+      const [exam, timeInfoData] = await Promise.all([
+        api.getExam(examId),
+        examsApi.getTimeInfo(examId),
+      ]);
+      
       setSelectedExam(exam);
+      setTimeInfo(timeInfoData);
+      
+      // Check if exam is open
+      if (timeInfoData.is_expired) {
+        setError('This exam has ended. You cannot submit anymore.');
+        return;
+      }
+      
+      if (!timeInfoData.is_open) {
+        setError('This exam has not started yet. Please wait until the scheduled time.');
+        return;
+      }
+      
       setStep('capture');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load exam');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleTimeExpired = () => {
+    setError('Time has expired! You can no longer submit.');
   };
 
   const handleImageSelect = async (file: File) => {
@@ -81,6 +125,10 @@ export function SubmitExam() {
       );
 
       setSubmissionId(result.submission_id);
+      // The API should return a digital_receipt_hash after creating the submission
+      if ('digital_receipt_hash' in result) {
+        setDigitalReceipt((result as { digital_receipt_hash?: string }).digital_receipt_hash || null);
+      }
       setExtractedAnswers(result.answers);
       setImageUrl(api.getSubmissionImageUrl(result.submission_id, 'original'));
       setStep('verify');
@@ -99,7 +147,11 @@ export function SubmitExam() {
     setError(null);
 
     try {
-      await api.verifySubmission(submissionId, answers);
+      const response = await api.verifySubmission(submissionId, answers);
+      // Get digital receipt from response
+      if ('digital_receipt_hash' in response) {
+        setDigitalReceipt((response as { digital_receipt_hash?: string }).digital_receipt_hash || null);
+      }
       setStep('success');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save verification');
@@ -111,6 +163,7 @@ export function SubmitExam() {
   const handleBack = () => {
     if (step === 'capture') {
       setSelectedExam(null);
+      setTimeInfo(null);
       setStep('select-exam');
     } else if (step === 'verify') {
       setStep('capture');
@@ -120,12 +173,22 @@ export function SubmitExam() {
   const handleNewSubmission = () => {
     setStep('select-exam');
     setSelectedExam(null);
+    setTimeInfo(null);
     setSubmissionId(null);
+    setDigitalReceipt(null);
     setExtractedAnswers([]);
     setImageUrl('');
     setStudentName('');
     setStudentId('');
     setError(null);
+  };
+
+  const copyReceipt = async () => {
+    if (digitalReceipt) {
+      await navigator.clipboard.writeText(digitalReceipt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   return (
@@ -178,7 +241,7 @@ export function SubmitExam() {
                   ? 'bg-success/20 text-success'
                   : 'bg-bg-card text-text-muted'
             }`}>
-              2. Upload Image
+              2. Upload
             </span>
             <span className="text-text-muted">&rarr;</span>
             <span className={`px-3 py-1 rounded-full whitespace-nowrap ${
@@ -188,7 +251,7 @@ export function SubmitExam() {
                   ? 'bg-success/20 text-success'
                   : 'bg-bg-card text-text-muted'
             }`}>
-              3. Verify Text
+              3. Verify
             </span>
             <span className="text-text-muted">&rarr;</span>
             <span className={`px-3 py-1 rounded-full whitespace-nowrap ${
@@ -206,9 +269,9 @@ export function SubmitExam() {
       <main className="max-w-6xl mx-auto px-4 py-8">
         {/* Error Display */}
         {error && (
-          <div className="mb-6 p-4 bg-danger/10 border border-danger/30 rounded-lg text-danger">
+          <Alert variant="error" className="mb-6" onDismiss={() => setError(null)}>
             {error}
-          </div>
+          </Alert>
         )}
 
         {/* Step: Select Exam */}
@@ -222,7 +285,7 @@ export function SubmitExam() {
                 <div>
                   <h2 className="text-xl font-semibold">Select Exam</h2>
                   <p className="text-sm text-text-secondary">
-                    Choose an exam to submit a student paper
+                    Choose an exam to submit your answer sheet
                   </p>
                 </div>
               </div>
@@ -231,10 +294,7 @@ export function SubmitExam() {
                 <div className="text-center py-12">
                   <FileText className="w-12 h-12 text-text-muted mx-auto mb-4" />
                   <p className="text-text-secondary">
-                    No finalized exams found.
-                  </p>
-                  <p className="text-sm text-text-muted">
-                    Create and finalize an exam template first.
+                    No exams available for submission.
                   </p>
                 </div>
               ) : (
@@ -256,6 +316,12 @@ export function SubmitExam() {
                         <span>{exam.question_count} questions</span>
                         <span>•</span>
                         <span>{exam.total_marks} marks</span>
+                        {exam.end_time && (
+                          <>
+                            <span>•</span>
+                            <span>Due: {new Date(exam.end_time).toLocaleDateString()}</span>
+                          </>
+                        )}
                       </div>
                     </button>
                   ))}
@@ -268,6 +334,17 @@ export function SubmitExam() {
         {/* Step: Capture */}
         {step === 'capture' && selectedExam && (
           <div className="space-y-6">
+            {/* Countdown Timer */}
+            {timeInfo && timeInfo.effective_deadline && (
+              <CountdownTimer
+                deadline={timeInfo.effective_deadline}
+                gracePeriodMinutes={timeInfo.grace_period_minutes}
+                serverTime={timeInfo.server_time}
+                hasExtension={timeInfo.has_extension}
+                onExpired={handleTimeExpired}
+              />
+            )}
+
             {/* Exam Info */}
             <div className="rounded-xl border border-border bg-bg-card p-6 shadow-lg">
               <h2 className="text-lg font-semibold mb-1">{selectedExam.title}</h2>
@@ -319,7 +396,7 @@ export function SubmitExam() {
                 <div>
                   <h2 className="text-xl font-semibold">Upload Answer Sheet</h2>
                   <p className="text-sm text-text-secondary">
-                    Upload a clear photo of the handwritten exam paper
+                    Upload a clear photo (.jpg, .png) or PDF of your handwritten exam paper
                   </p>
                 </div>
               </div>
@@ -336,6 +413,17 @@ export function SubmitExam() {
         {/* Step: Verify */}
         {step === 'verify' && selectedExam && (
           <div className="space-y-6">
+            {/* Timer (still visible during verification) */}
+            {timeInfo && timeInfo.effective_deadline && (
+              <CountdownTimer
+                deadline={timeInfo.effective_deadline}
+                gracePeriodMinutes={timeInfo.grace_period_minutes}
+                serverTime={timeInfo.server_time}
+                hasExtension={timeInfo.has_extension}
+                onExpired={handleTimeExpired}
+              />
+            )}
+
             {/* Exam Info */}
             <div className="rounded-xl border border-border bg-bg-card p-4 shadow-lg">
               <div className="flex items-center justify-between">
@@ -370,13 +458,51 @@ export function SubmitExam() {
             </div>
             <h2 className="text-2xl font-semibold mb-2">Submission Verified!</h2>
             <p className="text-text-secondary mb-6">
-              The student's answers have been extracted and verified.
+              Your answers have been extracted and submitted successfully.
             </p>
-            {submissionId && (
-              <p className="text-sm text-text-muted mb-6">
-                Submission ID: <code className="bg-bg-secondary px-2 py-1 rounded">{submissionId}</code>
+            
+            {/* Digital Receipt */}
+            <div className="max-w-md mx-auto mb-6">
+              <div className="flex items-center gap-2 justify-center mb-3">
+                <Shield className="w-5 h-5 text-primary" />
+                <span className="font-medium text-text-primary">Digital Receipt</span>
+              </div>
+              <p className="text-sm text-text-secondary mb-3">
+                Keep this receipt as proof of your submission. It can be used to verify your submission later.
               </p>
-            )}
+              
+              {submissionId && (
+                <div className="bg-bg-secondary p-4 rounded-lg border border-border">
+                  <p className="text-xs text-text-muted mb-2">Submission ID:</p>
+                  <code className="text-sm text-text-primary break-all">
+                    {submissionId}
+                  </code>
+                </div>
+              )}
+              
+              {digitalReceipt && (
+                <div className="mt-4 bg-bg-secondary p-4 rounded-lg border border-border">
+                  <p className="text-xs text-text-muted mb-2">Receipt Hash (SHA-256):</p>
+                  <div className="flex items-center gap-2">
+                    <code className="text-xs text-text-primary break-all flex-1 text-left">
+                      {digitalReceipt}
+                    </code>
+                    <button
+                      onClick={copyReceipt}
+                      className="p-2 hover:bg-bg-hover rounded-lg transition-colors"
+                      title="Copy receipt"
+                    >
+                      {copied ? (
+                        <Check className="w-4 h-4 text-success" />
+                      ) : (
+                        <Copy className="w-4 h-4 text-text-muted" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            
             <button
               onClick={handleNewSubmission}
               className="inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-bg-primary bg-primary text-white hover:bg-primary-dark focus:ring-primary"

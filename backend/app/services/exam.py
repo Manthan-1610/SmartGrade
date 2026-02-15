@@ -27,6 +27,7 @@ from ..schemas.exam import (
     ExamUpdate,
     ExamResponse,
     ExamListResponse,
+    ExamTimeInfo,
     QuestionResponse,
     ExamExtensionCreate,
     ExamExtensionResponse,
@@ -292,6 +293,71 @@ def delete_exam(
     session.delete(exam)
     session.flush()
     logger.info(f"Exam '{exam.title}' deleted by teacher {teacher.id}")
+
+
+def get_exam_time_info(
+    exam_id: uuid.UUID,
+    student: User,
+    session: Session,
+) -> ExamTimeInfo:
+    """
+    Get exam timing info for a student, including any extensions.
+    
+    Used by frontend to display countdown timer.
+    """
+    from datetime import timedelta
+    from .classroom import verify_student_enrolled
+    
+    exam = get_exam(exam_id, session)
+    
+    # Verify student is enrolled
+    if not verify_student_enrolled(exam.class_id, student.id, session):
+        raise AuthorizationException("You are not enrolled in this exam's class")
+    
+    # Check for extension
+    extension = session.exec(
+        select(ExamExtension).where(
+            and_(
+                ExamExtension.exam_id == exam_id,
+                ExamExtension.student_id == student.id,
+            )
+        )
+    ).first()
+    
+    effective_deadline = exam.end_time
+    has_extension = False
+    
+    if extension:
+        effective_deadline = extension.extended_end_time
+        has_extension = True
+    
+    now = datetime.utcnow()
+    
+    # Determine if exam is open and if deadline has passed
+    is_open = True
+    is_expired = False
+    
+    if exam.start_time and now < exam.start_time:
+        is_open = False
+    
+    if effective_deadline:
+        grace_end = effective_deadline + timedelta(minutes=exam.grace_period_minutes)
+        if now > grace_end:
+            is_expired = True
+            is_open = False
+    
+    return ExamTimeInfo(
+        exam_id=exam.id,
+        exam_title=exam.title,
+        start_time=exam.start_time,
+        end_time=exam.end_time,
+        effective_deadline=effective_deadline,
+        grace_period_minutes=exam.grace_period_minutes,
+        has_extension=has_extension,
+        server_time=now,
+        is_open=is_open,
+        is_expired=is_expired,
+    )
 
 
 # ============ Exam Extensions ============

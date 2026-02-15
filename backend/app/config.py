@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     upload_dir: str = "uploads"
     max_upload_size_mb: int = 10
     allowed_image_types: str = "image/jpeg,image/png,image/webp,image/heic"
+    allowed_file_types: str = "image/jpeg,image/png,image/webp,image/heic,application/pdf"
     
     # Rate Limiting
     rate_limit_requests: int = 100
@@ -76,6 +77,11 @@ class Settings(BaseSettings):
     def allowed_image_types_list(self) -> List[str]:
         """Get allowed image types as a list."""
         return [t.strip() for t in self.allowed_image_types.split(",") if t.strip()]
+    
+    @property
+    def allowed_file_types_list(self) -> List[str]:
+        """Get allowed file types (including PDF) as a list."""
+        return [t.strip() for t in self.allowed_file_types.split(",") if t.strip()]
     
     def validate_required_settings(self) -> None:
         """Validate that required settings are configured."""

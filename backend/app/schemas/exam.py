@@ -125,6 +125,25 @@ class ExamListResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ExamTimeInfo(BaseModel):
+    """
+    Time information for a student taking an exam.
+    
+    Includes the student's effective deadline (with any extensions).
+    Used by the frontend to show countdown timer.
+    """
+    exam_id: uuid.UUID
+    exam_title: str
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    effective_deadline: Optional[datetime] = None
+    grace_period_minutes: int = 5
+    has_extension: bool = False
+    server_time: datetime
+    is_open: bool = False
+    is_expired: bool = False
+
+
 # ============ Exam Extension Schemas ============
 
 class ExamExtensionCreate(BaseModel):

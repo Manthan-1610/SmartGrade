@@ -2,9 +2,9 @@
  * ReviewConfirm Component
  * 
  * Displays AI-generated rubric alongside teacher's original input.
- * Allows teacher to review and confirm before finalizing.
+ * Allows teacher to review, EDIT the grading strategy, and confirm.
  */
-import { useState, memo } from 'react';
+import { useState, memo, useCallback } from 'react';
 import { 
   CheckCircle2, 
   ArrowLeft, 
@@ -12,9 +12,12 @@ import {
   ChevronDown, 
   ChevronUp,
   Award,
-  Target
+  Target,
+  Pencil,
+  X,
+  Save
 } from 'lucide-react';
-import { Card, CardHeader, Badge, Button, Alert } from '@/components/ui';
+import { Card, CardHeader, Badge, Button, Alert, Textarea } from '@/components/ui';
 import type { 
   ExamFormData, 
   VerifyTemplateResponse, 
@@ -26,8 +29,8 @@ interface ReviewConfirmProps {
   examData: ExamFormData;
   /** AI-generated rubric */
   aiRubric: VerifyTemplateResponse;
-  /** Callback when teacher confirms */
-  onConfirm: () => void;
+  /** Callback when teacher confirms - receives edited rubrics */
+  onConfirm: (editedRubrics: AIQuestionRubric[]) => void;
   /** Callback to go back to editing */
   onBack: () => void;
   /** Loading state */
@@ -41,6 +44,7 @@ interface QuestionReviewCardProps {
   maxMarks: number;
   aiRubric: AIQuestionRubric | undefined;
   isInitiallyExpanded?: boolean;
+  onRubricEdit: (questionNumber: string, updatedRubric: AIQuestionRubric) => void;
 }
 
 const QuestionReviewCard = memo(function QuestionReviewCard({ 
@@ -49,9 +53,31 @@ const QuestionReviewCard = memo(function QuestionReviewCard({
   originalAnswer, 
   maxMarks,
   aiRubric,
-  isInitiallyExpanded = false
+  isInitiallyExpanded = false,
+  onRubricEdit
 }: QuestionReviewCardProps) {
   const [isExpanded, setIsExpanded] = useState(isInitiallyExpanded);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedCriteria, setEditedCriteria] = useState(aiRubric?.grading_criteria ?? '');
+  const [editedConcepts, setEditedConcepts] = useState(aiRubric?.key_concepts.join(', ') ?? '');
+
+  const handleSave = () => {
+    if (aiRubric) {
+      const updated: AIQuestionRubric = {
+        ...aiRubric,
+        grading_criteria: editedCriteria,
+        key_concepts: editedConcepts.split(',').map(c => c.trim()).filter(c => c),
+      };
+      onRubricEdit(questionNumber, updated);
+    }
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setEditedCriteria(aiRubric?.grading_criteria ?? '');
+    setEditedConcepts(aiRubric?.key_concepts.join(', ') ?? '');
+    setIsEditing(false);
+  };
 
   return (
     <Card padding="none" className="overflow-hidden animate-fade-in">
@@ -105,37 +131,115 @@ const QuestionReviewCard = memo(function QuestionReviewCard({
             <p className="text-text-primary whitespace-pre-wrap">{originalAnswer}</p>
           </div>
 
-          {/* AI Interpretation */}
+          {/* AI Interpretation - Editable */}
           {aiRubric && (
             <div className="p-4 bg-primary/10 border border-primary/30 rounded-lg space-y-4">
-              <div className="flex items-center gap-2 text-primary">
-                <Target className="w-5 h-5" aria-hidden="true" />
-                <span className="font-semibold">AI Grading Strategy</span>
-              </div>
-
-              {/* Key Concepts */}
-              <div>
-                <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
-                  Key Concepts to Verify
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {aiRubric.key_concepts.map((concept, idx) => (
-                    <Badge key={idx} variant="success">
-                      {concept}
-                    </Badge>
-                  ))}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-primary">
+                  <Target className="w-5 h-5" aria-hidden="true" />
+                  <span className="font-semibold">AI Grading Strategy</span>
                 </div>
+                {!isEditing ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    leftIcon={<Pencil className="w-4 h-4" />}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsEditing(true);
+                    }}
+                  >
+                    Edit
+                  </Button>
+                ) : (
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      leftIcon={<X className="w-4 h-4" />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCancel();
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      leftIcon={<Save className="w-4 h-4" />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSave();
+                      }}
+                    >
+                      Save
+                    </Button>
+                  </div>
+                )}
               </div>
 
-              {/* Grading Criteria */}
-              <div>
-                <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
-                  Grading Criteria
-                </p>
-                <p className="text-text-primary text-sm leading-relaxed">
-                  {aiRubric.grading_criteria}
-                </p>
-              </div>
+              {isEditing ? (
+                /* Editing Mode */
+                <div className="space-y-4">
+                  {/* Key Concepts - Editable */}
+                  <div>
+                    <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
+                      Key Concepts (comma-separated)
+                    </label>
+                    <input
+                      type="text"
+                      value={editedConcepts}
+                      onChange={(e) => setEditedConcepts(e.target.value)}
+                      className="w-full px-4 py-2.5 text-sm bg-white/80 border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
+                      placeholder="concept1, concept2, concept3"
+                    />
+                  </div>
+
+                  {/* Grading Criteria - Editable */}
+                  <div>
+                    <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
+                      Grading Criteria
+                    </label>
+                    <Textarea
+                      value={editedCriteria}
+                      onChange={(e) => setEditedCriteria(e.target.value)}
+                      rows={4}
+                      placeholder="Describe how to award marks..."
+                    />
+                  </div>
+                </div>
+              ) : (
+                /* View Mode */
+                <>
+                  {/* Key Concepts */}
+                  <div>
+                    <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
+                      Key Concepts to Verify
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {aiRubric.key_concepts.map((concept, idx) => (
+                        <Badge key={idx} variant="success">
+                          {concept}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Grading Criteria */}
+                  <div>
+                    <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">
+                      Grading Criteria
+                    </p>
+                    <p className="text-text-primary text-sm leading-relaxed">
+                      {aiRubric.grading_criteria}
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -151,9 +255,22 @@ export function ReviewConfirm({
   onBack,
   isLoading 
 }: ReviewConfirmProps) {
-  const aiRubricMap = new Map(
-    aiRubric.questions.map(r => [r.question_number, r])
+  // State to track edited rubrics
+  const [editedRubrics, setEditedRubrics] = useState<Map<string, AIQuestionRubric>>(
+    new Map(aiRubric.questions.map(r => [r.question_number, r]))
   );
+
+  const handleRubricEdit = useCallback((questionNumber: string, updatedRubric: AIQuestionRubric) => {
+    setEditedRubrics(prev => {
+      const next = new Map(prev);
+      next.set(questionNumber, updatedRubric);
+      return next;
+    });
+  }, []);
+
+  const handleConfirm = () => {
+    onConfirm(Array.from(editedRubrics.values()));
+  };
 
   return (
     <div className="space-y-6">
@@ -162,7 +279,7 @@ export function ReviewConfirm({
         <CardHeader
           icon={<Award className="w-6 h-6 text-success" />}
           title="Review AI Rubric"
-          description="Verify the AI's interpretation before finalizing"
+          description="Review and edit the AI's grading strategy before finalizing"
         />
 
         {/* Exam Summary */}
@@ -189,43 +306,49 @@ export function ReviewConfirm({
             <p className="text-xs font-medium text-text-muted uppercase tracking-wide">
               Total Marks
             </p>
-            <p className="font-semibold mt-1 text-primary">{aiRubric.total_marks}</p>
+            <p className="font-semibold mt-1">{aiRubric.total_marks}</p>
           </div>
         </div>
       </Card>
 
       {/* AI Suggestions */}
-      {aiRubric.suggestions.length > 0 && (
-        <Alert variant="warning" title="AI Suggestions" className="animate-slide-in">
-          <ul className="space-y-1 mt-2">
-            {aiRubric.suggestions.map((suggestion, idx) => (
-              <li key={idx} className="flex items-start gap-2">
-                <Lightbulb className="w-4 h-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
-                <span>{suggestion}</span>
-              </li>
-            ))}
-          </ul>
+      {aiRubric.suggestions && aiRubric.suggestions.length > 0 && (
+        <Alert variant="info" className="animate-fade-in">
+          <div className="flex items-start gap-3">
+            <Lightbulb className="w-5 h-5 text-info mt-0.5" aria-hidden="true" />
+            <div>
+              <p className="font-medium text-info">AI Suggestions</p>
+              <ul className="mt-2 space-y-1 text-sm">
+                {aiRubric.suggestions.map((suggestion, idx) => (
+                  <li key={idx}>{suggestion}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
         </Alert>
       )}
 
       {/* Questions Review */}
-      <section aria-labelledby="rubrics-heading">
-        <h3 id="rubrics-heading" className="text-lg font-semibold mb-4">
-          Question Rubrics
+      <section>
+        <h3 className="text-lg font-semibold mb-4">
+          Question-by-Question Review
         </h3>
+        <p className="text-sm text-text-secondary mb-4">
+          Click "Edit" on any question to customize the AI's grading strategy.
+        </p>
         
         <div className="space-y-3">
           {examData.questions
-            .sort((a, b) => a.question_number - b.question_number)
             .map((question, index) => (
               <QuestionReviewCard
                 key={question.id}
-                questionNumber={String(question.question_number)}
+                questionNumber={question.question_number}
                 originalText={question.text}
                 originalAnswer={question.ideal_answer}
                 maxMarks={question.max_marks}
-                aiRubric={aiRubricMap.get(String(question.question_number))}
+                aiRubric={editedRubrics.get(question.question_number)}
                 isInitiallyExpanded={index === 0}
+                onRubricEdit={handleRubricEdit}
               />
             ))}
         </div>
@@ -237,21 +360,18 @@ export function ReviewConfirm({
           type="button"
           variant="secondary"
           onClick={onBack}
-          disabled={isLoading}
-          leftIcon={<ArrowLeft className="w-4 h-4" aria-hidden="true" />}
+          leftIcon={<ArrowLeft className="w-5 h-5" />}
         >
-          Edit Questions
+          Back to Edit
         </Button>
-
         <Button
           type="button"
-          variant="success"
-          size="lg"
-          onClick={onConfirm}
+          variant="primary"
+          onClick={handleConfirm}
           isLoading={isLoading}
-          leftIcon={<CheckCircle2 className="w-5 h-5" aria-hidden="true" />}
+          leftIcon={<CheckCircle2 className="w-5 h-5" />}
         >
-          {isLoading ? 'Saving...' : 'Finalize Exam'}
+          {isLoading ? 'Saving...' : 'Approve & Go Live'}
         </Button>
       </div>
     </div>
