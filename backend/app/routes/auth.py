@@ -301,7 +301,8 @@ async def google_callback(
             google_id=google_data["sub"],
             email=google_data["email"],
             name=google_data.get("name", google_data["email"].split("@")[0]),
-            role=request_data.role
+            role=request_data.role,
+            organization_name=request_data.organization_name
         )
         
         return _create_auth_response(session, user, request)

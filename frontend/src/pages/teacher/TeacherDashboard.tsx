@@ -1,7 +1,7 @@
 /**
  * Teacher Dashboard
  *
- * Main hub showing organization overview, classes, recent exams,
+ * Main hub showing organization info, classes, recent exams,
  * and quick-action links.
  */
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
@@ -17,14 +17,13 @@ import { Button } from '@/components/ui';
 import { Badge } from '@/components/ui';
 import { Alert } from '@/components/ui';
 import { organizationsApi, classesApi, examsApi } from '@/lib/api';
-import type { Organization, ClassResponse, ExamListItem } from '@/lib/types';
+import type { OrganizationDetail, ClassResponse, ExamListItem } from '@/lib/types';
 import {
   Plus,
   BookOpen,
   FileText,
   Users,
   Building2,
-  Clock,
   BarChart3,
   ArrowRight,
 } from 'lucide-react';
@@ -33,7 +32,7 @@ export default function TeacherDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [organization, setOrganization] = useState<OrganizationDetail | null>(null);
   const [classes, setClasses] = useState<ClassResponse[]>([]);
   const [exams, setExams] = useState<ExamListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -43,12 +42,12 @@ export default function TeacherDashboard() {
     setIsLoading(true);
     setError(null);
     try {
-      const [orgs, cls, exs] = await Promise.all([
-        organizationsApi.list(),
+      const [org, cls, exs] = await Promise.all([
+        organizationsApi.getMyOrganization(),
         classesApi.listTeaching(),
         examsApi.listTeaching(),
       ]);
-      setOrganizations(orgs);
+      setOrganization(org);
       setClasses(cls);
       setExams(exs);
     } catch (err) {
@@ -71,7 +70,7 @@ export default function TeacherDashboard() {
   return (
     <DashboardLayout
       title={`Welcome, ${user?.name?.split(' ')[0] ?? 'Teacher'}`}
-      subtitle="Here's an overview of your teaching activity"
+      subtitle={organization ? organization.name : 'Loading...'}
       headerAction={
         <div className="flex gap-2">
           <Button
@@ -93,7 +92,7 @@ export default function TeacherDashboard() {
       }
     >
       {error && (
-        <Alert variant="error" className="mb-6" onDismiss={() => setError(null)}>
+        <Alert variant="error" onDismiss={() => setError(null)}>
           {error}
         </Alert>
       )}
@@ -105,8 +104,8 @@ export default function TeacherDashboard() {
           {/* Stats Row */}
           <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard
-              label="Organizations"
-              value={organizations.length}
+              label="Organization"
+              value={organization?.name ?? '—'}
               icon={<Building2 className="w-5 h-5 text-primary" />}
             />
             <StatCard
@@ -132,22 +131,22 @@ export default function TeacherDashboard() {
             <h2 className="text-lg font-semibold text-text-primary mb-4">Quick Actions</h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <QuickAction
-                icon={<Building2 className="w-6 h-6 text-primary" />}
-                title="Create Organization"
-                description="Set up a new coaching center"
-                onClick={() => navigate('/classes', { state: { createOrg: true } })}
-              />
-              <QuickAction
-                icon={<BookOpen className="w-6 h-6 text-secondary" />}
+                icon={<BookOpen className="w-6 h-6 text-primary" />}
                 title="Create Class"
                 description="Start a new class section"
                 onClick={() => navigate('/classes', { state: { createClass: true } })}
               />
               <QuickAction
-                icon={<FileText className="w-6 h-6 text-success" />}
+                icon={<FileText className="w-6 h-6 text-secondary" />}
                 title="Create Exam"
                 description="Design a new exam template"
                 onClick={() => navigate('/create-exam')}
+              />
+              <QuickAction
+                icon={<BarChart3 className="w-6 h-6 text-success" />}
+                title="View Grading"
+                description="Review and grade submissions"
+                onClick={() => navigate('/grading')}
               />
             </div>
           </section>
@@ -170,8 +169,8 @@ export default function TeacherDashboard() {
             {classes.length === 0 ? (
               <EmptyState
                 icon={<BookOpen className="w-8 h-8 text-text-muted" />}
-                title="No Classes Yet"
-                description="Create your first class and start inviting students."
+                title="No classes yet"
+                description="Create your first class to start inviting students."
                 action={
                   <Button
                     leftIcon={<Plus className="w-4 h-4" />}
@@ -182,9 +181,13 @@ export default function TeacherDashboard() {
                 }
               />
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {classes.slice(0, 6).map((cls) => (
-                  <ClassCard key={cls.id} cls={cls} onClick={() => navigate(`/classes/${cls.id}`)} />
+                  <ClassCard
+                    key={cls.id}
+                    cls={cls}
+                    onClick={() => navigate(`/classes/${cls.id}`)}
+                  />
                 ))}
               </div>
             )}
@@ -199,7 +202,7 @@ export default function TeacherDashboard() {
                   variant="ghost"
                   size="sm"
                   rightIcon={<ArrowRight className="w-4 h-4" />}
-                  onClick={() => navigate('/exams')}
+                  onClick={() => navigate('/grading')}
                 >
                   View All
                 </Button>
@@ -208,8 +211,8 @@ export default function TeacherDashboard() {
             {exams.length === 0 ? (
               <EmptyState
                 icon={<FileText className="w-8 h-8 text-text-muted" />}
-                title="No Exams Yet"
-                description="Create your first exam with AI-powered rubric generation."
+                title="No exams created"
+                description="Create an exam template to get started with grading."
                 action={
                   <Button
                     leftIcon={<Plus className="w-4 h-4" />}
@@ -220,9 +223,13 @@ export default function TeacherDashboard() {
                 }
               />
             ) : (
-              <div className="space-y-3">
-                {exams.slice(0, 5).map((exam) => (
-                  <ExamRow key={exam.id} exam={exam} navigate={navigate} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {exams.slice(0, 6).map((exam) => (
+                  <ExamCard
+                    key={exam.id}
+                    exam={exam}
+                    onClick={() => navigate(`/grading/${exam.id}`)}
+                  />
                 ))}
               </div>
             )}
@@ -233,7 +240,7 @@ export default function TeacherDashboard() {
   );
 }
 
-/* ---- Sub-components ---- */
+// ============ Sub-components ============
 
 function QuickAction({
   icon,
@@ -249,93 +256,79 @@ function QuickAction({
   return (
     <button
       onClick={onClick}
-      className="group flex items-center gap-4 bg-bg-card border border-border rounded-xl p-4 hover:border-primary/50 hover:shadow-lg transition-all text-left animate-fade-in"
+      className="flex items-start gap-4 p-4 bg-bg-card border border-border rounded-xl hover:border-primary/50 hover:bg-primary/5 transition-all text-left group"
     >
-      <div className="p-2.5 bg-bg-hover rounded-lg group-hover:bg-primary/10 transition-colors">
+      <div className="p-2 bg-bg-elevated rounded-lg group-hover:bg-primary/10 transition-colors">
         {icon}
       </div>
       <div>
-        <p className="font-medium text-text-primary group-hover:text-primary transition-colors">
+        <h3 className="font-medium text-text-primary group-hover:text-primary transition-colors">
           {title}
-        </p>
-        <p className="text-xs text-text-muted">{description}</p>
+        </h3>
+        <p className="text-sm text-text-secondary">{description}</p>
       </div>
     </button>
   );
 }
 
-function ClassCard({ cls, onClick }: { cls: ClassResponse; onClick: () => void }) {
+function ClassCard({
+  cls,
+  onClick,
+}: {
+  cls: ClassResponse;
+  onClick: () => void;
+}) {
   return (
     <button
       onClick={onClick}
-      className="group text-left bg-bg-card border border-border rounded-xl p-5 hover:border-primary/40 hover:shadow-lg transition-all animate-fade-in"
+      className="p-4 bg-bg-card border border-border rounded-xl hover:border-primary/50 hover:bg-primary/5 transition-all text-left group animate-fade-in"
     >
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold text-text-primary group-hover:text-primary transition-colors truncate">
+      <div className="flex items-start justify-between mb-2">
+        <h3 className="font-medium text-text-primary group-hover:text-primary transition-colors truncate">
           {cls.name}
         </h3>
         {cls.is_archived && <Badge variant="warning">Archived</Badge>}
       </div>
-      {cls.organization_name && (
-        <p className="text-xs text-text-muted mb-3 truncate">{cls.organization_name}</p>
-      )}
       <div className="flex items-center gap-4 text-xs text-text-secondary">
         <span className="flex items-center gap-1">
-          <Users className="w-3.5 h-3.5" /> {cls.student_count} students
+          <Users className="w-3 h-3" /> {cls.student_count} students
         </span>
         <span className="flex items-center gap-1">
-          <FileText className="w-3.5 h-3.5" /> {cls.exam_count} exams
+          <FileText className="w-3 h-3" /> {cls.exam_count} exams
         </span>
       </div>
     </button>
   );
 }
 
-function ExamRow({
+function ExamCard({
   exam,
-  navigate,
+  onClick,
 }: {
   exam: ExamListItem;
-  navigate: ReturnType<typeof useNavigate>;
+  onClick: () => void;
 }) {
   return (
-    <div
-      className="flex items-center justify-between bg-bg-card border border-border rounded-lg px-5 py-4 hover:border-border-light transition-colors cursor-pointer animate-fade-in"
-      onClick={() => navigate(`/grading/${exam.id}`)}
+    <button
+      onClick={onClick}
+      className="p-4 bg-bg-card border border-border rounded-xl hover:border-primary/50 hover:bg-primary/5 transition-all text-left group animate-fade-in"
     >
-      <div className="min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="font-medium text-text-primary truncate">{exam.title}</span>
-          <Badge variant={exam.is_finalized ? 'success' : 'warning'} size="sm">
-            {exam.is_finalized ? 'Active' : 'Draft'}
-          </Badge>
-          {exam.is_published && (
-            <Badge variant="primary" size="sm">Published</Badge>
-          )}
-        </div>
-        <div className="flex items-center gap-3 text-xs text-text-muted">
-          <span>{exam.subject}</span>
-          <span>•</span>
-          <span>{exam.question_count} questions</span>
-          <span>•</span>
-          <span>{exam.total_marks} marks</span>
-          {exam.submission_count > 0 && (
-            <>
-              <span>•</span>
-              <span className="text-primary">{exam.submission_count} submissions</span>
-            </>
-          )}
-        </div>
+      <div className="flex items-start justify-between mb-2">
+        <h3 className="font-medium text-text-primary group-hover:text-primary transition-colors truncate">
+          {exam.title}
+        </h3>
+        <Badge variant={exam.is_finalized ? 'success' : 'default'}>
+          {exam.is_finalized ? 'Active' : 'Draft'}
+        </Badge>
       </div>
-      <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-        {exam.end_time && (
-          <span className="text-xs text-text-muted flex items-center gap-1">
-            <Clock className="w-3.5 h-3.5" />
-            {new Date(exam.end_time).toLocaleDateString()}
-          </span>
+      <p className="text-xs text-text-muted mb-2 truncate">{exam.subject}</p>
+      <div className="flex items-center gap-4 text-xs text-text-secondary">
+        <span>{exam.question_count} questions</span>
+        <span>{exam.total_marks} marks</span>
+        {exam.submission_count > 0 && (
+          <span className="text-warning">{exam.submission_count} submissions</span>
         )}
-        <BarChart3 className="w-4 h-4 text-text-muted" />
       </div>
-    </div>
+    </button>
   );
 }

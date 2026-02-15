@@ -19,7 +19,6 @@ from ..models import (
     InvitationStatus,
     EnrollmentStatus,
     Organization,
-    OrganizationMember,
     User,
     UserRole,
     Exam,
@@ -37,7 +36,7 @@ from ..exceptions import (
     AuthorizationException,
     ValidationException,
 )
-from .organization import verify_org_teacher
+from .organization import verify_org_owner, get_teacher_org_id
 
 logger = logging.getLogger(__name__)
 
@@ -50,21 +49,24 @@ def create_class(
     session: Session,
 ) -> ClassResponse:
     """
-    Create a new class within an organization.
+    Create a new class within the teacher's organization.
+    
+    The class is automatically assigned to the teacher's organization.
+    Each teacher has exactly one organization created during signup.
     
     Args:
-        data: Class creation data.
+        data: Class creation data (name, description).
         teacher: The teacher creating the class.
         session: Database session.
         
     Returns:
         Created class response.
     """
-    # Verify the teacher belongs to the organization
-    verify_org_teacher(data.organization_id, teacher, session)
+    # Get the teacher's organization ID
+    org_id = get_teacher_org_id(teacher, session)
 
     new_class = Class(
-        organization_id=data.organization_id,
+        organization_id=org_id,
         name=data.name,
         description=data.description,
         teacher_id=teacher.id,
@@ -73,8 +75,7 @@ def create_class(
     session.flush()
     session.refresh(new_class)
 
-    org = session.get(Organization, data.organization_id)
-    logger.info(f"Class '{new_class.name}' created in org '{org.name}' by teacher {teacher.id}")
+    logger.info(f"Class '{new_class.name}' created by teacher {teacher.id}")
 
     return _class_to_response(new_class, session)
 
@@ -161,19 +162,23 @@ def get_class_detail(
 
 def get_teacher_classes(
     teacher: User,
-    org_id: Optional[uuid.UUID],
     session: Session,
 ) -> List[ClassResponse]:
-    """Get classes taught by a teacher, optionally filtered by organization."""
-    stmt = select(Class).where(
-        and_(
-            Class.teacher_id == teacher.id,
-            Class.is_archived == False,
+    """
+    Get all active classes taught by the teacher.
+    
+    Returns classes ordered by creation date (newest first).
+    """
+    stmt = (
+        select(Class)
+        .where(
+            and_(
+                Class.teacher_id == teacher.id,
+                Class.is_archived == False,
+            )
         )
+        .order_by(Class.created_at.desc())
     )
-    if org_id:
-        stmt = stmt.where(Class.organization_id == org_id)
-    stmt = stmt.order_by(Class.created_at.desc())
 
     classes = session.exec(stmt).all()
     return [_class_to_response(c, session) for c in classes]
@@ -238,6 +243,31 @@ def archive_class(
     session.refresh(cls)
     logger.info(f"Class '{cls.name}' archived by teacher {teacher.id}")
     return _class_to_response(cls, session)
+
+
+def delete_class(
+    class_id: uuid.UUID,
+    teacher: User,
+    session: Session,
+) -> None:
+    """
+    Permanently delete a class and all associated data.
+    
+    This will cascade delete:
+    - All enrollments
+    - All invitations
+    - All exams (and their questions, submissions, etc.)
+    
+    Use archive_class() for a soft delete instead.
+    """
+    cls = get_class(class_id, session)
+    _verify_class_teacher(cls, teacher, session)
+    
+    class_name = cls.name
+    session.delete(cls)
+    session.flush()
+    
+    logger.info(f"Class '{class_name}' permanently deleted by teacher {teacher.id}")
 
 
 # ============ Invitations ============
@@ -466,6 +496,105 @@ def respond_to_invitation(
     )
 
 
+def cancel_invitation(
+    invitation_id: uuid.UUID,
+    teacher: User,
+    session: Session,
+) -> None:
+    """
+    Cancel a pending invitation (teacher action).
+    
+    Only pending invitations can be cancelled.
+    """
+    invitation = session.get(ClassInvitation, invitation_id)
+    if not invitation:
+        raise NotFoundException("Invitation not found")
+    
+    cls = get_class(invitation.class_id, session)
+    _verify_class_teacher(cls, teacher, session)
+    
+    if invitation.status != InvitationStatus.PENDING.value:
+        raise ValidationException(
+            f"Cannot cancel invitation that has already been {invitation.status}"
+        )
+    
+    session.delete(invitation)
+    session.flush()
+    
+    logger.info(f"Invitation {invitation_id} cancelled by teacher {teacher.id}")
+
+
+def resend_invitation(
+    invitation_id: uuid.UUID,
+    teacher: User,
+    session: Session,
+) -> InvitationResponse:
+    """
+    Resend a rejected invitation by creating a new one.
+    
+    The old rejected invitation is deleted and a new pending one is created.
+    """
+    invitation = session.get(ClassInvitation, invitation_id)
+    if not invitation:
+        raise NotFoundException("Invitation not found")
+    
+    cls = get_class(invitation.class_id, session)
+    _verify_class_teacher(cls, teacher, session)
+    
+    if invitation.status != InvitationStatus.REJECTED.value:
+        raise ValidationException(
+            "Can only resend rejected invitations. "
+            f"This invitation is {invitation.status}."
+        )
+    
+    # Check if student is already enrolled
+    existing_enrollment = session.exec(
+        select(ClassEnrollment).where(
+            and_(
+                ClassEnrollment.class_id == invitation.class_id,
+                ClassEnrollment.student_id == invitation.student_id,
+                ClassEnrollment.status == EnrollmentStatus.ACTIVE.value,
+            )
+        )
+    ).first()
+    if existing_enrollment:
+        raise ValidationException("Student is already enrolled in this class")
+    
+    # Delete old invitation and create new one
+    student = session.get(User, invitation.student_id)
+    session.delete(invitation)
+    session.flush()
+    
+    new_invitation = ClassInvitation(
+        class_id=cls.id,
+        student_id=student.id,
+        invited_by=teacher.id,
+    )
+    session.add(new_invitation)
+    session.flush()
+    session.refresh(new_invitation)
+    
+    org = session.get(Organization, cls.organization_id)
+    logger.info(
+        f"Invitation resent to student {student.id} for class '{cls.name}' by teacher {teacher.id}"
+    )
+    
+    return InvitationResponse(
+        id=new_invitation.id,
+        class_id=cls.id,
+        class_name=cls.name,
+        organization_name=org.name if org else None,
+        student_id=student.id,
+        student_name=student.name,
+        student_email=student.email,
+        invited_by=teacher.id,
+        invited_by_name=teacher.name,
+        status=new_invitation.status,
+        created_at=new_invitation.created_at,
+        responded_at=new_invitation.responded_at,
+    )
+
+
 # ============ Enrollment Management ============
 
 def update_enrollment_status(
@@ -584,23 +713,13 @@ def _verify_class_teacher(cls: Class, user: User, session: Session) -> None:
 
 
 def _verify_class_access(cls: Class, user: User, session: Session) -> None:
-    """Verify user has access to view a class (teacher, org member, or enrolled student)."""
-    # Teacher or org owner
+    """Verify user has access to view a class (teacher, org owner, or enrolled student)."""
+    # Teacher
     if cls.teacher_id == user.id:
         return
+    # Org owner (teacher who owns the organization)
     org = session.get(Organization, cls.organization_id)
     if org and org.owner_id == user.id:
-        return
-    # Org member
-    member = session.exec(
-        select(OrganizationMember).where(
-            and_(
-                OrganizationMember.organization_id == cls.organization_id,
-                OrganizationMember.user_id == user.id,
-            )
-        )
-    ).first()
-    if member:
         return
     # Enrolled student
     if verify_student_enrolled(cls.id, user.id, session):

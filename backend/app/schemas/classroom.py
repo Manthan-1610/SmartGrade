@@ -8,10 +8,13 @@ from pydantic import BaseModel, Field
 # ============ Class Schemas ============
 
 class ClassCreate(BaseModel):
-    """Schema for creating a new class."""
+    """
+    Schema for creating a new class.
+    
+    The class is automatically assigned to the teacher's organization.
+    """
     name: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = Field(None, max_length=1000)
-    organization_id: uuid.UUID
 
 
 class ClassUpdate(BaseModel):

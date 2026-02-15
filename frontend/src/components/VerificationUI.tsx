@@ -38,15 +38,15 @@ export function VerificationUI({
   onVerify,
   isLoading 
 }: VerificationUIProps) {
-  const [editedAnswers, setEditedAnswers] = useState<Map<number, string>>(new Map());
+  const [editedAnswers, setEditedAnswers] = useState<Map<string, string>>(new Map());
   const [zoom, setZoom] = useState(1);
-  const [expandedQuestions, setExpandedQuestions] = useState<Set<number>>(new Set([1]));
+  const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set(['1']));
   const [, setIsFullscreen] = useState(false);
   const imageContainerRef = useRef<HTMLDivElement>(null);
 
   // Initialize edited answers with extracted text
   useEffect(() => {
-    const initial = new Map<number, string>();
+    const initial = new Map<string, string>();
     extractedAnswers.forEach(ans => {
       initial.set(ans.question_number, ans.extracted_text);
     });
@@ -57,7 +57,7 @@ export function VerificationUI({
   const handleZoomOut = () => setZoom(z => Math.max(z - 0.25, 0.5));
   const handleResetZoom = () => setZoom(1);
 
-  const toggleQuestion = (num: number) => {
+  const toggleQuestion = (num: string) => {
     setExpandedQuestions(prev => {
       const next = new Set(prev);
       if (next.has(num)) {
@@ -69,7 +69,7 @@ export function VerificationUI({
     });
   };
 
-  const updateAnswer = (questionNumber: number, text: string) => {
+  const updateAnswer = (questionNumber: string, text: string) => {
     setEditedAnswers(prev => {
       const next = new Map(prev);
       next.set(questionNumber, text);
@@ -177,7 +177,7 @@ export function VerificationUI({
         {/* Answer Cards */}
         <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
           {exam.questions
-            .sort((a, b) => a.question_number - b.question_number)
+            .sort((a, b) => a.order - b.order)
             .map((question) => {
               const extracted = answerMap.get(question.question_number);
               const isExpanded = expandedQuestions.has(question.question_number);

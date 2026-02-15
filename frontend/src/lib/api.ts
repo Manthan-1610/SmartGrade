@@ -28,10 +28,7 @@ import type {
   User,
   Organization,
   OrganizationDetail,
-  OrganizationCreate,
   OrganizationUpdate,
-  OrganizationMember,
-  AddMemberRequest,
   ClassCreate,
   ClassUpdate,
   ClassResponse,
@@ -274,83 +271,35 @@ export const authApi = {
 // ============ Organizations API ============
 
 export const organizationsApi = {
-  /** Create a new organization. */
-  async create(data: OrganizationCreate): Promise<Organization> {
-    const res = await fetch(`${API_BASE}/organizations/`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(data),
-    });
-    return handleResponse<Organization>(res);
-  },
-
-  /** List organizations the current user belongs to. */
-  async list(): Promise<Organization[]> {
-    const res = await fetch(`${API_BASE}/organizations/`, {
-      headers: getAuthHeaders(),
-    });
-    return handleResponse<Organization[]>(res);
-  },
-
-  /** Get organization detail by ID. */
-  async get(orgId: string): Promise<OrganizationDetail> {
-    const res = await fetch(`${API_BASE}/organizations/${orgId}`, {
+  /**
+   * Get the current teacher's organization.
+   * Each teacher has exactly one organization created during signup.
+   */
+  async getMyOrganization(): Promise<OrganizationDetail> {
+    const res = await fetch(`${API_BASE}/organizations/me`, {
       headers: getAuthHeaders(),
     });
     return handleResponse<OrganizationDetail>(res);
   },
 
-  /** Update an organization. */
-  async update(orgId: string, data: OrganizationUpdate): Promise<Organization> {
-    const res = await fetch(`${API_BASE}/organizations/${orgId}`, {
+  /** Update the current teacher's organization. */
+  async updateMyOrganization(data: OrganizationUpdate): Promise<Organization> {
+    const res = await fetch(`${API_BASE}/organizations/me`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(data),
     });
     return handleResponse<Organization>(res);
   },
-
-  /** Delete (deactivate) an organization. */
-  async delete(orgId: string): Promise<SuccessResponse> {
-    const res = await fetch(`${API_BASE}/organizations/${orgId}`, {
-      method: 'DELETE',
-      headers: getAuthHeaders(),
-    });
-    return handleResponse<SuccessResponse>(res);
-  },
-
-  /** List members of an organization. */
-  async getMembers(orgId: string): Promise<OrganizationMember[]> {
-    const res = await fetch(`${API_BASE}/organizations/${orgId}/members`, {
-      headers: getAuthHeaders(),
-    });
-    return handleResponse<OrganizationMember[]>(res);
-  },
-
-  /** Add a teacher to an organization. */
-  async addMember(orgId: string, data: AddMemberRequest): Promise<OrganizationMember> {
-    const res = await fetch(`${API_BASE}/organizations/${orgId}/members`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(data),
-    });
-    return handleResponse<OrganizationMember>(res);
-  },
-
-  /** Remove a member from an organization. */
-  async removeMember(orgId: string, memberId: string): Promise<SuccessResponse> {
-    const res = await fetch(`${API_BASE}/organizations/${orgId}/members/${memberId}`, {
-      method: 'DELETE',
-      headers: getAuthHeaders(),
-    });
-    return handleResponse<SuccessResponse>(res);
-  },
 };
 
 // ============ Classes API ============
 
 export const classesApi = {
-  /** Create a new class within an organization. */
+  /**
+   * Create a new class.
+   * The class is automatically assigned to the teacher's organization.
+   */
   async create(data: ClassCreate): Promise<ClassResponse> {
     const res = await fetch(`${API_BASE}/classes/`, {
       method: 'POST',
@@ -360,10 +309,9 @@ export const classesApi = {
     return handleResponse<ClassResponse>(res);
   },
 
-  /** List classes the teacher is managing. Optionally filter by org. */
-  async listTeaching(orgId?: string): Promise<ClassResponse[]> {
-    const qs = buildQuery({ org_id: orgId });
-    const res = await fetch(`${API_BASE}/classes/teaching${qs}`, {
+  /** List all classes the teacher is managing. */
+  async listTeaching(): Promise<ClassResponse[]> {
+    const res = await fetch(`${API_BASE}/classes/teaching`, {
       headers: getAuthHeaders(),
     });
     return handleResponse<ClassResponse[]>(res);
@@ -395,13 +343,22 @@ export const classesApi = {
     return handleResponse<ClassResponse>(res);
   },
 
-  /** Archive a class. */
+  /** Archive a class (soft delete). */
   async archive(classId: string): Promise<ClassResponse> {
     const res = await fetch(`${API_BASE}/classes/${classId}/archive`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
     return handleResponse<ClassResponse>(res);
+  },
+
+  /** Delete a class permanently. */
+  async delete(classId: string): Promise<SuccessResponse> {
+    const res = await fetch(`${API_BASE}/classes/${classId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<SuccessResponse>(res);
   },
 
   // --- Teacher-side Invitation Management ---
@@ -429,6 +386,27 @@ export const classesApi = {
       headers: getAuthHeaders(),
     });
     return handleResponse<InvitationResponse[]>(res);
+  },
+
+  /** Cancel a pending invitation. */
+  async cancelInvitation(invitationId: string): Promise<SuccessResponse> {
+    const res = await fetch(`${API_BASE}/classes/invitations/${invitationId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<SuccessResponse>(res);
+  },
+
+  /** Resend a rejected invitation (creates new pending invitation). */
+  async resendInvitation(invitationId: string): Promise<InvitationResponse> {
+    const res = await fetch(
+      `${API_BASE}/classes/invitations/${invitationId}/resend`,
+      {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      },
+    );
+    return handleResponse<InvitationResponse>(res);
   },
 
   // --- Enrollment Management ---

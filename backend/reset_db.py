@@ -9,7 +9,7 @@ from sqlmodel import SQLModel
 from app.database import engine
 from app.models import (
     User, RefreshToken,
-    Organization, OrganizationMember,
+    Organization,
     Class, ClassInvitation, ClassEnrollment,
     Exam, Question, ExamExtension,
     Submission, StudentAnswer, DigitalReceipt,
@@ -41,7 +41,6 @@ def reset_database_preserve_users():
                 "class_enrollments",     # Depends on classes and users
                 "class_invitations",     # Depends on classes and users
                 "classes",               # Depends on organizations and users
-                "organization_members",  # Depends on organizations and users
                 "organizations",         # Depends on users
                 "refresh_tokens",        # Depends on users
             ]
@@ -63,9 +62,9 @@ def reset_database_preserve_users():
         logger.info("All dependent tables recreated successfully")
         
         print("\n✓ Database reset complete!")
-        print("Tables reset: organizations, organization_members, classes, class_invitations,")
-        print("  class_enrollments, exams, questions, exam_extensions, submissions,")
-        print("  student_answers, digital_receipts, refresh_tokens")
+        print("Tables reset: organizations, classes, class_invitations, class_enrollments,")
+        print("  exams, questions, exam_extensions, submissions, student_answers,")
+        print("  digital_receipts, refresh_tokens")
         print("Preserved: users table with all accounts intact")
         
     except Exception as e:

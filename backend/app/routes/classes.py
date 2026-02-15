@@ -51,12 +51,11 @@ async def create_class(
     summary="List classes I teach",
 )
 async def list_teaching_classes(
-    org_id: Optional[uuid.UUID] = Query(None, description="Filter by organization"),
     current_user: User = Depends(require_teacher),
     session: Session = Depends(get_session),
 ) -> List[ClassResponse]:
     """Get all classes taught by the current teacher."""
-    return class_service.get_teacher_classes(current_user, org_id, session)
+    return class_service.get_teacher_classes(current_user, session)
 
 
 @router.get(
@@ -115,6 +114,26 @@ async def archive_class(
     return class_service.archive_class(class_id, current_user, session)
 
 
+@router.delete(
+    "/{class_id}",
+    response_model=SuccessResponse,
+    summary="Delete a class",
+)
+async def delete_class(
+    class_id: uuid.UUID,
+    current_user: User = Depends(require_teacher),
+    session: Session = Depends(get_session),
+) -> SuccessResponse:
+    """
+    Permanently delete a class.
+    
+    WARNING: This will delete all enrollments and invitations for this class.
+    Consider using archive instead for a soft delete.
+    """
+    class_service.delete_class(class_id, current_user, session)
+    return SuccessResponse(message="Class deleted successfully")
+
+
 # ============ Invitations (Teacher Side) ============
 
 @router.post(
@@ -146,6 +165,35 @@ async def list_class_invitations(
 ) -> List[InvitationResponse]:
     """Get all invitations for a class."""
     return class_service.get_class_invitations(class_id, current_user, session, status)
+
+
+@router.delete(
+    "/invitations/{invitation_id}",
+    response_model=SuccessResponse,
+    summary="Cancel an invitation",
+)
+async def cancel_invitation(
+    invitation_id: uuid.UUID,
+    current_user: User = Depends(require_teacher),
+    session: Session = Depends(get_session),
+) -> SuccessResponse:
+    """Cancel a pending invitation. Only pending invitations can be cancelled."""
+    class_service.cancel_invitation(invitation_id, current_user, session)
+    return SuccessResponse(message="Invitation cancelled successfully")
+
+
+@router.post(
+    "/invitations/{invitation_id}/resend",
+    response_model=InvitationResponse,
+    summary="Resend a rejected invitation",
+)
+async def resend_invitation(
+    invitation_id: uuid.UUID,
+    current_user: User = Depends(require_teacher),
+    session: Session = Depends(get_session),
+) -> InvitationResponse:
+    """Resend a rejected invitation. Creates a new pending invitation."""
+    return class_service.resend_invitation(invitation_id, current_user, session)
 
 
 # ============ Enrollments ============

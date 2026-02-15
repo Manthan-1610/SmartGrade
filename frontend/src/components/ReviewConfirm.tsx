@@ -35,7 +35,7 @@ interface ReviewConfirmProps {
 }
 
 interface QuestionReviewCardProps {
-  questionNumber: number;
+  questionNumber: string;
   originalText: string;
   originalAnswer: string;
   maxMarks: number;
@@ -220,11 +220,11 @@ export function ReviewConfirm({
             .map((question, index) => (
               <QuestionReviewCard
                 key={question.id}
-                questionNumber={question.question_number}
+                questionNumber={String(question.question_number)}
                 originalText={question.text}
                 originalAnswer={question.ideal_answer}
                 maxMarks={question.max_marks}
-                aiRubric={aiRubricMap.get(question.question_number)}
+                aiRubric={aiRubricMap.get(String(question.question_number))}
                 isInitiallyExpanded={index === 0}
               />
             ))}

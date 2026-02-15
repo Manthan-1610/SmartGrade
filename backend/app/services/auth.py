@@ -12,7 +12,7 @@ from jose import JWTError, jwt
 from sqlmodel import Session, select
 
 from ..config import get_settings
-from ..models import User, RefreshToken, UserRole, AuthProvider
+from ..models import User, RefreshToken, UserRole, AuthProvider, Organization
 from ..logging_config import get_logger
 from ..exceptions import (
     ValidationException,
@@ -153,6 +153,8 @@ class AuthService:
         """
         Register a new user with email and password.
         
+        For teachers, automatically creates an organization with the teacher as owner.
+        
         Args:
             session: Database session.
             email: User's email address.
@@ -190,14 +192,24 @@ class AuthService:
             name=name,
             hashed_password=self.hash_password(password),
             role=role.value,
-            organization_name=organization_name,
+            organization_name=organization_name if role == UserRole.TEACHER else None,
             auth_provider=AuthProvider.LOCAL.value,
             is_verified=False  # Email verification can be added later
         )
         
         session.add(user)
-        session.flush()  # Write to DB within transaction
+        session.flush()
         session.refresh(user)
+        
+        # Auto-create organization for teachers
+        if role == UserRole.TEACHER and organization_name:
+            organization = Organization(
+                name=organization_name,
+                owner_id=user.id,
+            )
+            session.add(organization)
+            session.flush()
+            logger.info(f"Auto-created organization '{organization_name}' for teacher {user.id}")
         
         logger.info(f"Registered new user: {email} as {role.value}")
         return user
@@ -393,10 +405,13 @@ class AuthService:
         google_id: str,
         email: str,
         name: str,
-        role: UserRole
+        role: UserRole,
+        organization_name: Optional[str] = None
     ) -> User:
         """
         Get existing user or create new one from Google OAuth.
+        
+        For teachers, optionally creates an organization if organization_name provided.
         
         Args:
             session: Database session.
@@ -404,6 +419,7 @@ class AuthService:
             email: User's email from Google.
             name: User's name from Google.
             role: Selected role (teacher/student).
+            organization_name: Organization name (optional, for teachers).
             
         Returns:
             User instance.
@@ -431,6 +447,12 @@ class AuthService:
             # Commit handled by session dependency
             return user
         
+        # Validate organization for teachers
+        if role == UserRole.TEACHER and not organization_name:
+            raise ValidationException(
+                "Organization name is required for teacher signup"
+            )
+        
         # Create new user
         user = User(
             email=email.lower(),
@@ -438,12 +460,23 @@ class AuthService:
             google_id=google_id,
             auth_provider=AuthProvider.GOOGLE.value,
             role=role.value,
+            organization_name=organization_name if role == UserRole.TEACHER else None,
             is_verified=True  # Google accounts are pre-verified
         )
         
         session.add(user)
-        session.flush()  # Write to DB within transaction
+        session.flush()
         session.refresh(user)
+        
+        # Auto-create organization for teachers
+        if role == UserRole.TEACHER and organization_name:
+            organization = Organization(
+                name=organization_name,
+                owner_id=user.id,
+            )
+            session.add(organization)
+            session.flush()
+            logger.info(f"Auto-created organization '{organization_name}' for Google teacher {user.id}")
         
         logger.info(f"Created Google user: {email} as {role.value}")
         return user

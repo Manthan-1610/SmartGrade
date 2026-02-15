@@ -99,6 +99,12 @@ class GoogleAuthCallbackRequest(BaseModel):
     """Request schema for Google OAuth with ID token (frontend flow)."""
     id_token: str
     role: UserRole = UserRole.STUDENT
+    organization_name: Optional[str] = Field(
+        None,
+        min_length=2,
+        max_length=200,
+        description="Required for teacher signup"
+    )
 
 
 # ============ Response Schemas ============

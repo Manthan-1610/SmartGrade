@@ -27,12 +27,6 @@ class AuthProvider(str, Enum):
     GOOGLE = "google"
 
 
-class OrganizationRole(str, Enum):
-    """Role within an organization."""
-    OWNER = "owner"
-    TEACHER = "teacher"
-
-
 class InvitationStatus(str, Enum):
     """Class invitation status."""
     PENDING = "pending"
@@ -78,6 +72,7 @@ class User(SQLModel, table=True):
 
     # Profile
     name: str
+    organization_name: Optional[str] = Field(default=None, index=True)
 
     # Authentication
     hashed_password: Optional[str] = None
@@ -105,10 +100,6 @@ class User(SQLModel, table=True):
             "foreign_keys": "[Organization.owner_id]",
             "cascade": "all, delete-orphan",
         }
-    )
-    organization_memberships: List["OrganizationMember"] = Relationship(
-        back_populates="user",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )
     taught_classes: List["Class"] = Relationship(
         back_populates="teacher",
@@ -177,28 +168,10 @@ class Organization(SQLModel, table=True):
         back_populates="owned_organizations",
         sa_relationship_kwargs={"foreign_keys": "[Organization.owner_id]"}
     )
-    members: List["OrganizationMember"] = Relationship(
-        back_populates="organization",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
-    )
     classes: List["Class"] = Relationship(
         back_populates="organization",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )
-
-
-class OrganizationMember(SQLModel, table=True):
-    """Membership of a user within an organization (owner or teacher)."""
-    __tablename__ = "organization_members"
-
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    organization_id: uuid.UUID = Field(foreign_key="organizations.id", index=True)
-    user_id: uuid.UUID = Field(foreign_key="users.id", index=True)
-    role: str = Field(default=OrganizationRole.TEACHER.value)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-    organization: Optional[Organization] = Relationship(back_populates="members")
-    user: Optional[User] = Relationship(back_populates="organization_memberships")
 
 
 # ============ Class Models ============

@@ -51,11 +51,6 @@ export interface LoginData {
 
 // ============ Organization Types ============
 
-export interface OrganizationCreate {
-  name: string;
-  description?: string;
-}
-
 export interface OrganizationUpdate {
   name?: string;
   description?: string;
@@ -72,23 +67,8 @@ export interface Organization {
 }
 
 export interface OrganizationDetail extends Organization {
-  member_count: number;
   class_count: number;
   owner_name: string | null;
-}
-
-export interface OrganizationMember {
-  id: string;
-  user_id: string;
-  user_name: string;
-  user_email: string;
-  role: string;
-  created_at: string;
-}
-
-export interface AddMemberRequest {
-  email: string;
-  role?: 'teacher' | 'owner';
 }
 
 // ============ Class Types ============
@@ -96,7 +76,6 @@ export interface AddMemberRequest {
 export interface ClassCreate {
   name: string;
   description?: string;
-  organization_id: string;
 }
 
 export interface ClassUpdate {

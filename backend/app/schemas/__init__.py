@@ -21,12 +21,9 @@ from .auth import (
 
 # Organization schemas
 from .organization import (
-    OrganizationCreate,
     OrganizationUpdate,
     OrganizationResponse,
     OrganizationDetailResponse,
-    OrganizationMemberResponse,
-    AddMemberRequest,
 )
 
 # Classroom schemas
@@ -85,12 +82,9 @@ __all__ = [
     "RefreshTokenRequest",
     "GoogleAuthCallbackRequest",
     # Organization
-    "OrganizationCreate",
     "OrganizationUpdate",
     "OrganizationResponse",
     "OrganizationDetailResponse",
-    "OrganizationMemberResponse",
-    "AddMemberRequest",
     # Classroom
     "ClassCreate",
     "ClassUpdate",
