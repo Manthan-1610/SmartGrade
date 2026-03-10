@@ -365,6 +365,7 @@ class Submission(SQLModel, table=True):
     # Status tracking
     status: str = Field(default=SubmissionStatus.PENDING.value, index=True)
     is_verified: bool = Field(default=False)
+    is_missed: bool = Field(default=False, index=True)  # True if student didn't submit before deadline
 
     # Timestamps
     server_received_at: datetime = Field(default_factory=datetime.utcnow)

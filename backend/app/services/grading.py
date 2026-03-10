@@ -21,8 +21,11 @@ from ..models import (
     DigitalReceipt,
     SubmissionStatus,
     ExamStatus,
+    EnrollmentStatus,
     User,
     Class,
+    ClassEnrollment,
+    ExamExtension,
 )
 from ..schemas.exam import (
     StudentAnswerResponse,
@@ -32,6 +35,8 @@ from ..schemas.exam import (
     PublishMarksRequest,
     StudentExamResult,
     DigitalReceiptResponse,
+    MissedStudentResponse,
+    ExamSubmissionSummary,
 )
 from ..exceptions import (
     NotFoundException,
@@ -447,3 +452,298 @@ def generate_receipt(
     session.flush()
 
     return receipt
+
+
+# ============ Missed Students ============
+
+def get_missed_students(
+    exam_id: uuid.UUID,
+    teacher: User,
+    session: Session,
+) -> List[MissedStudentResponse]:
+    """
+    Get list of students who didn't submit for an exam after the deadline.
+    
+    A student is considered "missed" if:
+    1. They are enrolled in the exam's class
+    2. The exam deadline has passed (including their personal extension if any)
+    3. They have no submission record
+    """
+    exam = get_exam(exam_id, session)
+    cls = session.get(Class, exam.class_id)
+    _verify_class_teacher(cls, teacher, session)
+
+    # Check if exam has ended
+    now = datetime.utcnow()
+    if exam.end_time and now < exam.end_time:
+        # Exam hasn't ended yet — no missed students
+        return []
+
+    # Get all enrolled students in this class
+    enrolled = session.exec(
+        select(ClassEnrollment, User)
+        .join(User, ClassEnrollment.student_id == User.id)
+        .where(
+            and_(
+                ClassEnrollment.class_id == exam.class_id,
+                ClassEnrollment.status == EnrollmentStatus.ACTIVE.value,
+            )
+        )
+    ).all()
+
+    # Get all student IDs who have submitted
+    submitted_ids = set(
+        session.exec(
+            select(Submission.student_id)
+            .where(Submission.exam_id == exam_id)
+        ).all()
+    )
+
+    # Get extensions for this exam
+    extensions = session.exec(
+        select(ExamExtension)
+        .where(ExamExtension.exam_id == exam_id)
+    ).all()
+    extension_map = {ext.student_id: ext for ext in extensions}
+
+    missed = []
+    for enrollment, student in enrolled:
+        if student.id in submitted_ids:
+            continue
+
+        # Check if student has an extension that hasn't passed yet
+        ext = extension_map.get(student.id)
+        student_deadline = exam.end_time
+        had_extension = False
+        extended_deadline = None
+
+        if ext:
+            had_extension = True
+            extended_deadline = ext.extended_end_time
+            student_deadline = ext.extended_end_time
+
+        # If student's personal deadline hasn't passed, they're not missed yet
+        if student_deadline and now < student_deadline:
+            continue
+
+        missed.append(MissedStudentResponse(
+            student_id=student.id,
+            student_name=student.name,
+            student_email=student.email,
+            exam_id=exam.id,
+            exam_title=exam.title,
+            deadline=exam.end_time,
+            had_extension=had_extension,
+            extended_deadline=extended_deadline,
+        ))
+
+    logger.info(f"Found {len(missed)} missed students for exam {exam_id}")
+    return missed
+
+
+def get_exam_submission_summary(
+    exam_id: uuid.UUID,
+    teacher: User,
+    session: Session,
+) -> ExamSubmissionSummary:
+    """
+    Get a comprehensive summary of an exam's submissions and missed students.
+    
+    Includes counts, submission list, and missed student list.
+    """
+    exam = get_exam(exam_id, session)
+    cls = session.get(Class, exam.class_id)
+    _verify_class_teacher(cls, teacher, session)
+
+    # Get enrolled count
+    total_enrolled = session.exec(
+        select(func.count(ClassEnrollment.id))
+        .where(
+            and_(
+                ClassEnrollment.class_id == exam.class_id,
+                ClassEnrollment.status == EnrollmentStatus.ACTIVE.value,
+            )
+        )
+    ).one()
+
+    # Get submissions with student info
+    stmt = (
+        select(Submission, User)
+        .join(User, Submission.student_id == User.id)
+        .where(Submission.exam_id == exam_id)
+        .order_by(Submission.submitted_at.desc())
+    )
+    results = session.exec(stmt).all()
+
+    submissions = []
+    graded_count = 0
+    published_count = 0
+
+    for sub, student in results:
+        # Get answer stats
+        answers = session.exec(
+            select(StudentAnswer)
+            .where(StudentAnswer.submission_id == sub.id)
+        ).all()
+
+        answer_count = len(answers)
+        obtained_marks = sum(a.final_marks or 0 for a in answers)
+        is_graded = sub.status == SubmissionStatus.GRADED.value
+        is_published = all(a.is_published for a in answers) if answers else False
+
+        if is_graded:
+            graded_count += 1
+        if is_published:
+            published_count += 1
+
+        submissions.append(SubmissionListResponse(
+            id=sub.id,
+            exam_id=sub.exam_id,
+            exam_title=exam.title,
+            student_id=sub.student_id,
+            student_name=student.name,
+            student_email=student.email,
+            status=sub.status,
+            is_verified=sub.is_verified,
+            is_missed=sub.is_missed,  # Use database field
+            submitted_at=sub.submitted_at,
+            created_at=sub.created_at,
+            answer_count=answer_count,
+            total_marks=exam.total_marks,
+            obtained_marks=obtained_marks,
+        ))
+
+    # Get missed students
+    missed_students = get_missed_students(exam_id, teacher, session)
+
+    return ExamSubmissionSummary(
+        exam_id=exam.id,
+        exam_title=exam.title,
+        total_enrolled=total_enrolled,
+        submitted_count=len(submissions),
+        missed_count=len(missed_students),
+        graded_count=graded_count,
+        published_count=published_count,
+        submissions=submissions,
+        missed_students=missed_students,
+    )
+
+
+def create_missed_submission(
+    exam_id: uuid.UUID,
+    student_id: uuid.UUID,
+    teacher: User,
+    session: Session,
+) -> SubmissionListResponse:
+    """
+    Create a "missed" submission record for a student who didn't submit.
+    
+    This marks the student with zero marks for all questions.
+    """
+    exam = get_exam(exam_id, session)
+    cls = session.get(Class, exam.class_id)
+    _verify_class_teacher(cls, teacher, session)
+
+    # Check if submission already exists
+    existing = session.exec(
+        select(Submission).where(
+            and_(
+                Submission.exam_id == exam_id,
+                Submission.student_id == student_id,
+            )
+        )
+    ).first()
+
+    if existing:
+        raise ValidationException("Student already has a submission")
+
+    student = session.get(User, student_id)
+    if not student:
+        raise NotFoundException("Student not found")
+
+    # Create a "missed" submission
+    submission = Submission(
+        exam_id=exam_id,
+        student_id=student_id,
+        status=SubmissionStatus.GRADED.value,  # Already graded (zero)
+        is_verified=True,
+        is_missed=True,  # Flag as missed submission
+        submitted_at=datetime.utcnow(),
+    )
+    session.add(submission)
+    session.flush()
+
+    # Create zero-mark answers for all questions
+    questions = session.exec(
+        select(Question)
+        .where(Question.exam_id == exam_id)
+        .order_by(Question.order)
+    ).all()
+
+    for q in questions:
+        answer = StudentAnswer(
+            submission_id=submission.id,
+            question_id=q.id,
+            question_number=q.question_number,
+            extracted_text="[No submission - Exam missed]",
+            verified_text="[No submission - Exam missed]",
+            confidence=1.0,
+            ai_marks=0,
+            ai_feedback="Student did not submit for this exam.",
+            teacher_marks=0,
+            teacher_feedback="Absent / No submission",
+            ai_flagged_for_review=False,
+        )
+        session.add(answer)
+
+    session.flush()
+    session.refresh(submission)
+
+    logger.info(f"Created missed submission for student {student_id} in exam {exam_id}")
+
+    return SubmissionListResponse(
+        id=submission.id,
+        exam_id=submission.exam_id,
+        exam_title=exam.title,
+        student_id=submission.student_id,
+        student_name=student.name,
+        student_email=student.email,
+        status=submission.status,
+        is_verified=True,
+        is_missed=True,
+        submitted_at=submission.submitted_at,
+        created_at=submission.created_at,
+        answer_count=len(questions),
+        total_marks=exam.total_marks,
+        obtained_marks=0,
+    )
+
+
+def mark_all_missed_as_zero(
+    exam_id: uuid.UUID,
+    teacher: User,
+    session: Session,
+) -> dict:
+    """
+    Bulk action to mark all missed students with zero grades.
+    
+    Creates submission records for all students who didn't submit.
+    """
+    missed = get_missed_students(exam_id, teacher, session)
+
+    created_count = 0
+    for m in missed:
+        try:
+            create_missed_submission(exam_id, m.student_id, teacher, session)
+            created_count += 1
+        except ValidationException:
+            # Already has a submission — skip
+            continue
+
+    logger.info(f"Marked {created_count} missed students with zero for exam {exam_id}")
+
+    return {
+        "exam_id": str(exam_id),
+        "marked_count": created_count,
+        "message": f"Created zero-grade submissions for {created_count} students",
+    }

@@ -46,6 +46,8 @@ import type {
   StudentAnswerResponse,
   StudentExamResult,
   SuccessResponse,
+  MissedStudentResponse,
+  ExamSubmissionSummary,
 } from './types';
 
 const API_BASE = '/api';
@@ -754,6 +756,49 @@ export const gradingApi = {
       headers: getAuthHeaders(),
     });
     return handleResponse<StudentExamResult>(res);
+  },
+
+  /** Get exam submission summary including missed students. */
+  async getExamSummary(examId: string): Promise<ExamSubmissionSummary> {
+    const res = await fetch(`${API_BASE}/grading/exams/${examId}/summary`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<ExamSubmissionSummary>(res);
+  },
+
+  /** Get list of students who missed an exam (didn't submit). */
+  async getMissedStudents(examId: string): Promise<MissedStudentResponse[]> {
+    const res = await fetch(`${API_BASE}/grading/exams/${examId}/missed`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<MissedStudentResponse[]>(res);
+  },
+
+  /** Mark a specific student as missed (create zero-grade submission). */
+  async markStudentMissed(
+    examId: string,
+    studentId: string,
+  ): Promise<SubmissionListItem> {
+    const res = await fetch(
+      `${API_BASE}/grading/exams/${examId}/missed/${studentId}`,
+      {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      },
+    );
+    return handleResponse<SubmissionListItem>(res);
+  },
+
+  /** Mark all missed students with zero grades. */
+  async markAllMissed(examId: string): Promise<{ marked_count: number; message: string }> {
+    const res = await fetch(
+      `${API_BASE}/grading/exams/${examId}/missed/mark-all`,
+      {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      },
+    );
+    return handleResponse<{ marked_count: number; message: string }>(res);
   },
 };
 

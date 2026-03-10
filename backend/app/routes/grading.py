@@ -20,6 +20,8 @@ from ..schemas.exam import (
     StudentAnswerResponse,
     StudentExamResult,
     SuccessResponse,
+    MissedStudentResponse,
+    ExamSubmissionSummary,
 )
 from ..services import grading as grading_service
 
@@ -40,6 +42,80 @@ async def list_exam_submissions(
 ) -> List[SubmissionListResponse]:
     """Get all submissions for an exam (teacher view)."""
     return grading_service.get_exam_submissions(exam_id, current_user, session)
+
+
+@router.get(
+    "/exams/{exam_id}/summary",
+    response_model=ExamSubmissionSummary,
+    summary="Get exam submission summary",
+)
+async def get_exam_summary(
+    exam_id: uuid.UUID,
+    current_user: User = Depends(require_teacher),
+    session: Session = Depends(get_session),
+) -> ExamSubmissionSummary:
+    """
+    Get comprehensive submission summary including missed students.
+    
+    Returns counts, submission list, and list of students who didn't submit.
+    """
+    return grading_service.get_exam_submission_summary(exam_id, current_user, session)
+
+
+@router.get(
+    "/exams/{exam_id}/missed",
+    response_model=List[MissedStudentResponse],
+    summary="List missed students",
+)
+async def list_missed_students(
+    exam_id: uuid.UUID,
+    current_user: User = Depends(require_teacher),
+    session: Session = Depends(get_session),
+) -> List[MissedStudentResponse]:
+    """
+    Get list of students who didn't submit for the exam.
+    
+    Only returns students whose deadline has passed (including extensions).
+    """
+    return grading_service.get_missed_students(exam_id, current_user, session)
+
+
+@router.post(
+    "/exams/{exam_id}/missed/{student_id}",
+    response_model=SubmissionListResponse,
+    summary="Mark student as missed",
+)
+async def mark_student_missed(
+    exam_id: uuid.UUID,
+    student_id: uuid.UUID,
+    current_user: User = Depends(require_teacher),
+    session: Session = Depends(get_session),
+) -> SubmissionListResponse:
+    """
+    Create a zero-grade submission for a student who missed the exam.
+    
+    This allows the teacher to officially record the absence.
+    """
+    return grading_service.create_missed_submission(
+        exam_id, student_id, current_user, session
+    )
+
+
+@router.post(
+    "/exams/{exam_id}/missed/mark-all",
+    summary="Mark all missed students with zero",
+)
+async def mark_all_missed(
+    exam_id: uuid.UUID,
+    current_user: User = Depends(require_teacher),
+    session: Session = Depends(get_session),
+) -> dict:
+    """
+    Bulk action to create zero-grade submissions for all missed students.
+    
+    This is useful after the exam deadline to finalize records.
+    """
+    return grading_service.mark_all_missed_as_zero(exam_id, current_user, session)
 
 
 @router.get(

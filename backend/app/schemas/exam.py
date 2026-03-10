@@ -287,11 +287,44 @@ class SubmissionListResponse(BaseModel):
     exam_title: Optional[str] = None
     student_id: uuid.UUID
     student_name: Optional[str] = None
+    student_email: Optional[str] = None
     status: str
     is_verified: bool
+    is_missed: bool = False  # True if student didn't submit before deadline
     submitted_at: datetime
     created_at: datetime
     answer_count: int = 0
+    total_marks: float = 0
+    obtained_marks: float = 0
+
+    model_config = {"from_attributes": True}
+
+
+class MissedStudentResponse(BaseModel):
+    """Schema for a student who missed (didn't submit) an exam."""
+    student_id: uuid.UUID
+    student_name: str
+    student_email: str
+    exam_id: uuid.UUID
+    exam_title: str
+    deadline: Optional[datetime] = None
+    had_extension: bool = False
+    extended_deadline: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ExamSubmissionSummary(BaseModel):
+    """Summary of exam submissions including missed students."""
+    exam_id: uuid.UUID
+    exam_title: str
+    total_enrolled: int
+    submitted_count: int
+    missed_count: int
+    graded_count: int
+    published_count: int
+    submissions: List[SubmissionListResponse] = []
+    missed_students: List[MissedStudentResponse] = []
 
     model_config = {"from_attributes": True}
 

@@ -20,6 +20,8 @@ import type {
   SubmissionResponse,
   StudentAnswerResponse,
   GradeAnswerRequest,
+  MissedStudentResponse,
+  ExamSubmissionSummary,
 } from '@/lib/types';
 import {
   ArrowLeft,
@@ -34,6 +36,9 @@ import {
   BarChart3,
   Users,
   MessageSquare,
+  UserX,
+  Ban,
+  Mail,
 } from 'lucide-react';
 
 /* ---------- Types ---------- */
@@ -52,7 +57,9 @@ export default function GradingInterface() {
 
   // Main state
   const [exam, setExam] = useState<ExamResponse | null>(null);
+  const [summary, setSummary] = useState<ExamSubmissionSummary | null>(null);
   const [submissions, setSubmissions] = useState<SubmissionListItem[]>([]);
+  const [missedStudents, setMissedStudents] = useState<MissedStudentResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,6 +75,10 @@ export default function GradingInterface() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishSuccess, setPublishSuccess] = useState<string | null>(null);
 
+  // Missed students state
+  const [isMarkingMissed, setIsMarkingMissed] = useState(false);
+  const [activeTab, setActiveTab] = useState<'submissions' | 'missed'>('submissions');
+
   /* ---------- Data Loading ---------- */
 
   const loadData = useCallback(async () => {
@@ -75,12 +86,14 @@ export default function GradingInterface() {
     setIsLoading(true);
     setError(null);
     try {
-      const [examData, subs] = await Promise.all([
+      const [examData, summaryData] = await Promise.all([
         examsApi.get(examId),
-        gradingApi.listExamSubmissions(examId),
+        gradingApi.getExamSummary(examId),
       ]);
       setExam(examData);
-      setSubmissions(subs);
+      setSummary(summaryData);
+      setSubmissions(summaryData.submissions);
+      setMissedStudents(summaryData.missed_students);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load exam data');
     } finally {
@@ -154,6 +167,37 @@ export default function GradingInterface() {
     [examId, loadData, activeSubmission, loadSubmissionDetail],
   );
 
+  const handleMarkStudentMissed = useCallback(
+    async (studentId: string) => {
+      if (!examId) return;
+      setIsMarkingMissed(true);
+      try {
+        await gradingApi.markStudentMissed(examId, studentId);
+        setPublishSuccess('Student marked as missed with zero grades.');
+        loadData(); // Refresh to move them to submissions list
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to mark student as missed');
+      } finally {
+        setIsMarkingMissed(false);
+      }
+    },
+    [examId, loadData],
+  );
+
+  const handleMarkAllMissed = useCallback(async () => {
+    if (!examId) return;
+    setIsMarkingMissed(true);
+    try {
+      const result = await gradingApi.markAllMissed(examId);
+      setPublishSuccess(result.message);
+      loadData(); // Refresh
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to mark all students as missed');
+    } finally {
+      setIsMarkingMissed(false);
+    }
+  }, [examId, loadData]);
+
   /* ---------- Computed ---------- */
 
   const questionMap = useMemo(() => {
@@ -219,52 +263,177 @@ export default function GradingInterface() {
         </Alert>
       )}
 
+      {/* Summary Stats */}
+      {summary && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+          <div className="bg-bg-card border border-border rounded-xl px-4 py-3 text-center">
+            <p className="text-2xl font-bold text-text-primary">{summary.total_enrolled}</p>
+            <p className="text-xs text-text-muted">Enrolled</p>
+          </div>
+          <div className="bg-bg-card border border-border rounded-xl px-4 py-3 text-center">
+            <p className="text-2xl font-bold text-success">{summary.submitted_count}</p>
+            <p className="text-xs text-text-muted">Submitted</p>
+          </div>
+          <div className="bg-bg-card border border-border rounded-xl px-4 py-3 text-center">
+            <p className="text-2xl font-bold text-danger">{summary.missed_count}</p>
+            <p className="text-xs text-text-muted">Missed</p>
+          </div>
+          <div className="bg-bg-card border border-border rounded-xl px-4 py-3 text-center">
+            <p className="text-2xl font-bold text-primary">{summary.published_count}</p>
+            <p className="text-xs text-text-muted">Published</p>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col lg:flex-row gap-6">
-        {/* Left Panel: Submissions List */}
+        {/* Left Panel: Submissions/Missed Tabs */}
         <div className="lg:w-80 flex-shrink-0">
           <div className="bg-bg-card border border-border rounded-xl">
-            <div className="p-4 border-b border-border">
-              <h3 className="font-semibold text-text-primary flex items-center gap-2">
+            {/* Tab Headers */}
+            <div className="flex border-b border-border">
+              <button
+                onClick={() => setActiveTab('submissions')}
+                className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                  activeTab === 'submissions'
+                    ? 'text-primary border-b-2 border-primary bg-primary/5'
+                    : 'text-text-muted hover:text-text-secondary'
+                }`}
+              >
                 <Users className="w-4 h-4" />
-                Submissions ({submissions.length})
-              </h3>
+                Submitted ({submissions.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('missed')}
+                className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                  activeTab === 'missed'
+                    ? 'text-danger border-b-2 border-danger bg-danger/5'
+                    : 'text-text-muted hover:text-text-secondary'
+                }`}
+              >
+                <UserX className="w-4 h-4" />
+                Missed ({missedStudents.length})
+              </button>
             </div>
-            {submissions.length === 0 ? (
-              <div className="p-6 text-center text-text-muted text-sm">
-                No submissions yet.
-              </div>
-            ) : (
-              <ul className="divide-y divide-border max-h-[calc(100vh-280px)] overflow-y-auto">
-                {submissions.map((sub) => (
-                  <li key={sub.id}>
-                    <button
-                      onClick={() => loadSubmissionDetail(sub.id)}
-                      className={`w-full text-left p-4 hover:bg-bg-hover transition-colors ${
-                        activeSubmission?.id === sub.id
-                          ? 'bg-primary/5 border-l-2 border-l-primary'
-                          : ''
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <p className="font-medium text-text-primary text-sm truncate">
-                          {sub.student_name || 'Unknown Student'}
-                        </p>
-                        <Badge
-                          variant={sub.status === 'graded' ? 'success' : sub.is_verified ? 'primary' : 'warning'}
-                          size="sm"
+
+            {/* Submissions Tab */}
+            {activeTab === 'submissions' && (
+              <>
+                {submissions.length === 0 ? (
+                  <div className="p-6 text-center text-text-muted text-sm">
+                    No submissions yet.
+                  </div>
+                ) : (
+                  <ul className="divide-y divide-border max-h-[calc(100vh-360px)] overflow-y-auto">
+                    {submissions.map((sub) => (
+                      <li key={sub.id}>
+                        <button
+                          onClick={() => loadSubmissionDetail(sub.id)}
+                          className={`w-full text-left p-4 hover:bg-bg-hover transition-colors ${
+                            activeSubmission?.id === sub.id
+                              ? 'bg-primary/5 border-l-2 border-l-primary'
+                              : ''
+                          }`}
                         >
-                          {sub.status}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-text-muted">
-                        <span>{sub.answer_count} answers</span>
-                        <span>·</span>
-                        <span>{new Date(sub.submitted_at).toLocaleString()}</span>
-                      </div>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="font-medium text-text-primary text-sm truncate">
+                              {sub.student_name || 'Unknown Student'}
+                            </p>
+                            <Badge
+                              variant={
+                                sub.is_missed
+                                  ? 'danger'
+                                  : sub.status === 'graded'
+                                    ? 'success'
+                                    : sub.is_verified
+                                      ? 'primary'
+                                      : 'warning'
+                              }
+                              size="sm"
+                            >
+                              {sub.is_missed ? 'Absent' : sub.status}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-text-muted">
+                            {sub.is_missed ? (
+                              <span className="text-danger">No submission · 0 marks</span>
+                            ) : (
+                              <>
+                                <span>{sub.answer_count} answers</span>
+                                <span>·</span>
+                                <span>{new Date(sub.submitted_at).toLocaleString()}</span>
+                              </>
+                            )}
+                          </div>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+
+            {/* Missed Students Tab */}
+            {activeTab === 'missed' && (
+              <>
+                {missedStudents.length === 0 ? (
+                  <div className="p-6 text-center text-text-muted text-sm">
+                    <CheckCircle className="w-8 h-8 mx-auto mb-2 text-success" />
+                    <p>All enrolled students have submitted!</p>
+                  </div>
+                ) : (
+                  <div>
+                    {/* Bulk Action */}
+                    <div className="p-3 border-b border-border bg-danger/5">
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        className="w-full"
+                        leftIcon={<Ban className="w-4 h-4" />}
+                        onClick={handleMarkAllMissed}
+                        isLoading={isMarkingMissed}
+                      >
+                        Mark All as Zero ({missedStudents.length})
+                      </Button>
+                    </div>
+                    <ul className="divide-y divide-border max-h-[calc(100vh-420px)] overflow-y-auto">
+                      {missedStudents.map((student) => (
+                        <li key={student.student_id} className="p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="min-w-0">
+                              <p className="font-medium text-text-primary text-sm truncate">
+                                {student.student_name}
+                              </p>
+                              <p className="text-xs text-text-muted flex items-center gap-1 truncate">
+                                <Mail className="w-3 h-3 flex-shrink-0" />
+                                {student.student_email}
+                              </p>
+                            </div>
+                            <Badge variant="danger" size="sm">
+                              <UserX className="w-3 h-3 mr-1" />
+                              Missed
+                            </Badge>
+                          </div>
+                          {student.had_extension && student.extended_deadline && (
+                            <p className="text-xs text-warning mb-2">
+                              Had extension until {new Date(student.extended_deadline).toLocaleString()}
+                            </p>
+                          )}
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="w-full"
+                            leftIcon={<Ban className="w-3.5 h-3.5" />}
+                            onClick={() => handleMarkStudentMissed(student.student_id)}
+                            disabled={isMarkingMissed}
+                          >
+                            Mark as Zero
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

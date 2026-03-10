@@ -343,11 +343,40 @@ export interface SubmissionListItem {
   exam_title: string | null;
   student_id: string;
   student_name: string | null;
+  student_email: string | null;
   status: string;
   is_verified: boolean;
+  is_missed: boolean;
   submitted_at: string;
   created_at: string;
   answer_count: number;
+  total_marks: number;
+  obtained_marks: number;
+}
+
+// ============ Missed Student Types ============
+
+export interface MissedStudentResponse {
+  student_id: string;
+  student_name: string;
+  student_email: string;
+  exam_id: string;
+  exam_title: string;
+  deadline: string | null;
+  had_extension: boolean;
+  extended_deadline: string | null;
+}
+
+export interface ExamSubmissionSummary {
+  exam_id: string;
+  exam_title: string;
+  total_enrolled: number;
+  submitted_count: number;
+  missed_count: number;
+  graded_count: number;
+  published_count: number;
+  submissions: SubmissionListItem[];
+  missed_students: MissedStudentResponse[];
 }
 
 // ============ Grading Types ============
