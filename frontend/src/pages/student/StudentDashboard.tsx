@@ -3,8 +3,13 @@
  *
  * Landing page for students showing enrolled classes, upcoming exams,
  * pending invitations, and recent results at a glance.
+ *
+ * Exam cards display live status:
+ *  - "Not Yet Started" — before start_time (grayed, shows start time)
+ *  - "Open"            — between start_time and effective deadline (clickable)
+ *  - "Ended"           — past end_time + grace (disabled)
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -25,7 +30,56 @@ import {
   Clock,
   Award,
   TrendingUp,
+  AlertTriangle,
+  Ban,
+  Timer,
 } from 'lucide-react';
+
+// ---- Exam status utilities ----
+
+type ExamStatus = 'not_started' | 'open' | 'ended';
+
+/**
+ * Derive the live status of an exam based on its start/end times.
+ * `grace_period_minutes` defaults to 0 if the list item doesn't carry it
+ * (the ExamListItem schema does not include grace period, so we treat
+ * end_time as the hard cutoff from the list view; the real grace-period
+ * enforcement happens on the backend and in the SubmitExam page).
+ */
+function getExamStatus(exam: ExamListItem): ExamStatus {
+  const now = new Date();
+
+  if (exam.start_time && now < new Date(exam.start_time)) {
+    return 'not_started';
+  }
+
+  if (exam.end_time && now > new Date(exam.end_time)) {
+    return 'ended';
+  }
+
+  return 'open';
+}
+
+/** Human-readable relative time until or since a date. */
+function relativeTime(iso: string): string {
+  const target = new Date(iso);
+  const now = new Date();
+  const diffMs = target.getTime() - now.getTime();
+  const absDiff = Math.abs(diffMs);
+
+  const minutes = Math.floor(absDiff / 60_000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  const label =
+    days > 0
+      ? `${days}d ${hours % 24}h`
+      : hours > 0
+        ? `${hours}h ${minutes % 60}m`
+        : `${minutes}m`;
+
+  return diffMs > 0 ? `in ${label}` : `${label} ago`;
+}
 
 export default function StudentDashboard() {
   const navigate = useNavigate();
@@ -63,10 +117,28 @@ export default function StudentDashboard() {
     loadDashboard();
   }, [loadDashboard]);
 
-  const upcomingExams = exams.filter((e) => {
-    if (!e.end_time) return true;
-    return new Date(e.end_time) > new Date();
-  });
+  // Categorize exams by live status
+  const categorizedExams = useMemo(() => {
+    const notStarted: ExamListItem[] = [];
+    const open: ExamListItem[] = [];
+    const ended: ExamListItem[] = [];
+
+    for (const exam of exams) {
+      const status = getExamStatus(exam);
+      if (status === 'not_started') notStarted.push(exam);
+      else if (status === 'open') open.push(exam);
+      else ended.push(exam);
+    }
+
+    return { notStarted, open, ended };
+  }, [exams]);
+
+  /** All exams that still need attention (not-started + open). */
+  const upcomingExams = useMemo(
+    () => [...categorizedExams.open, ...categorizedExams.notStarted],
+    [categorizedExams],
+  );
+
   const avgPercentage =
     results.length > 0
       ? Math.round(results.reduce((s, r) => s + r.percentage, 0) / results.length)
@@ -164,30 +236,98 @@ export default function StudentDashboard() {
               />
             ) : (
               <div className="space-y-3">
-                {upcomingExams.slice(0, 5).map((exam) => (
-                  <button
-                    key={exam.id}
-                    onClick={() => navigate('/submit-exam', { state: { examId: exam.id } })}
-                    className="w-full flex items-center justify-between bg-bg-card border border-border rounded-xl px-5 py-4 hover:border-primary/40 hover:shadow-lg transition-all text-left animate-fade-in"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-text-primary">{exam.title}</span>
-                        <Badge variant="primary" size="sm">{exam.subject}</Badge>
+                {upcomingExams.slice(0, 5).map((exam) => {
+                  const status = getExamStatus(exam);
+                  const isClickable = status === 'open';
+
+                  return (
+                    <button
+                      key={exam.id}
+                      onClick={() => {
+                        if (isClickable) {
+                          navigate('/submit-exam', { state: { examId: exam.id } });
+                        }
+                      }}
+                      disabled={!isClickable}
+                      className={`w-full flex items-center justify-between rounded-xl px-5 py-4 text-left transition-all animate-fade-in border ${
+                        status === 'open'
+                          ? 'bg-bg-card border-border hover:border-primary/40 hover:shadow-lg cursor-pointer'
+                          : 'bg-bg-secondary border-border/60 opacity-75 cursor-not-allowed'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className={`font-medium ${status === 'open' ? 'text-text-primary' : 'text-text-muted'}`}>
+                            {exam.title}
+                          </span>
+                          <Badge variant="primary" size="sm">{exam.subject}</Badge>
+
+                          {/* Status badge */}
+                          {status === 'not_started' && (
+                            <Badge variant="warning" size="sm">
+                              <Timer className="w-3 h-3 mr-1" />
+                              Not Yet Started
+                            </Badge>
+                          )}
+                          {status === 'open' && (
+                            <Badge variant="success" size="sm">
+                              <Clock className="w-3 h-3 mr-1" />
+                              Open
+                            </Badge>
+                          )}
+                          {status === 'ended' && (
+                            <Badge variant="danger" size="sm">
+                              <Ban className="w-3 h-3 mr-1" />
+                              Ended
+                            </Badge>
+                          )}
+                        </div>
+
+                        <p className="text-xs text-text-muted">
+                          {exam.question_count} questions · {exam.total_marks} marks
+                          {exam.class_name && ` · ${exam.class_name}`}
+                        </p>
+
+                        {/* Contextual time info */}
+                        {status === 'not_started' && exam.start_time && (
+                          <p className="text-xs text-warning mt-1 flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3" />
+                            Starts {relativeTime(exam.start_time)} ({new Date(exam.start_time).toLocaleString()})
+                          </p>
+                        )}
+                        {status === 'open' && exam.end_time && (
+                          <p className="text-xs text-success mt-1 flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            Ends {relativeTime(exam.end_time)}
+                          </p>
+                        )}
                       </div>
-                      <p className="text-xs text-text-muted">
-                        {exam.question_count} questions · {exam.total_marks} marks
-                        {exam.class_name && ` · ${exam.class_name}`}
-                      </p>
-                    </div>
-                    {exam.end_time && (
-                      <span className="flex items-center gap-1 text-xs text-text-muted flex-shrink-0 ml-4">
-                        <Clock className="w-3.5 h-3.5" />
-                        {new Date(exam.end_time).toLocaleDateString()}
-                      </span>
-                    )}
-                  </button>
-                ))}
+
+                      {/* Right side time indicator */}
+                      {exam.end_time && status === 'open' && (
+                        <span className="flex items-center gap-1 text-xs text-text-muted flex-shrink-0 ml-4">
+                          <Clock className="w-3.5 h-3.5" />
+                          {new Date(exam.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                      {status === 'not_started' && (
+                        <span className="flex items-center gap-1 text-xs text-warning flex-shrink-0 ml-4">
+                          <Timer className="w-3.5 h-3.5" />
+                          Upcoming
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Ended Exams (collapsed, optional view) */}
+            {categorizedExams.ended.length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm text-text-muted mb-2">
+                  {categorizedExams.ended.length} ended exam{categorizedExams.ended.length > 1 ? 's' : ''} — results will appear below once published.
+                </p>
               </div>
             )}
           </section>

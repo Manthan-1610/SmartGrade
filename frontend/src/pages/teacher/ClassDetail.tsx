@@ -31,7 +31,31 @@ import {
   Archive,
   RotateCcw,
   Trash2,
+  Pencil,
+  Timer,
+  Ban,
+  CheckCircle,
 } from 'lucide-react';
+
+/* ---- Exam status helpers ---- */
+
+function getExamStatus(exam: ExamListItem): 'not_started' | 'open' | 'ended' {
+  const now = Date.now();
+  if (exam.start_time && new Date(exam.start_time).getTime() > now) return 'not_started';
+  if (exam.end_time && new Date(exam.end_time).getTime() < now) return 'ended';
+  return 'open';
+}
+
+function relativeTime(iso: string): string {
+  const diff = new Date(iso).getTime() - Date.now();
+  const absDiff = Math.abs(diff);
+  const mins = Math.round(absDiff / 60_000);
+  if (mins < 60) return `${mins}m ${diff > 0 ? 'from now' : 'ago'}`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ${diff > 0 ? 'from now' : 'ago'}`;
+  const days = Math.round(hrs / 24);
+  return `${days}d ${diff > 0 ? 'from now' : 'ago'}`;
+}
 
 export default function ClassDetail() {
   const { classId } = useParams<{ classId: string }>();
@@ -44,6 +68,8 @@ export default function ClassDetail() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'students' | 'invitations' | 'exams'>('students');
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [examToDelete, setExamToDelete] = useState<ExamListItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadClassData = useCallback(async () => {
     if (!classId) return;
@@ -86,6 +112,21 @@ export default function ClassDetail() {
       loadClassData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to remove student');
+    }
+  };
+
+  const handleDeleteExam = async () => {
+    if (!examToDelete) return;
+    setIsDeleting(true);
+    try {
+      await examsApi.delete(examToDelete.id);
+      setExamToDelete(null);
+      loadClassData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete exam');
+      setExamToDelete(null);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -307,26 +348,86 @@ export default function ClassDetail() {
                   }
                 />
               ) : (
-                exams.map((exam) => (
-                  <button
-                    key={exam.id}
-                    onClick={() => navigate(`/grading/${exam.id}`)}
-                    className="w-full flex items-center justify-between bg-bg-card border border-border rounded-lg px-5 py-4 hover:border-primary/40 transition-all text-left"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-text-primary">{exam.title}</span>
-                        <Badge variant={exam.is_finalized ? 'success' : 'warning'} size="sm">
-                          {exam.is_finalized ? 'Active' : 'Draft'}
+                exams.map((exam) => {
+                  const status = getExamStatus(exam);
+                  const statusBadge = (() => {
+                    if (status === 'open') {
+                      return (
+                        <Badge variant="success" size="sm">
+                          <Clock className="w-3 h-3 mr-1" />
+                          Due {relativeTime(exam.end_time!)}
                         </Badge>
+                      );
+                    }
+                    if (status === 'not_started') {
+                      return (
+                        <Badge variant="warning" size="sm">
+                          <Timer className="w-3 h-3 mr-1" />
+                          Starts {relativeTime(exam.start_time!)}
+                        </Badge>
+                      );
+                    }
+                    return (
+                      <Badge variant="danger" size="sm">
+                        <Ban className="w-3 h-3 mr-1" />
+                        Ended
+                      </Badge>
+                    );
+                  })();
+
+                  return (
+                    <div
+                      key={exam.id}
+                      className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-bg-card border border-border rounded-lg px-5 py-4 animate-fade-in"
+                    >
+                      {/* Exam Info — clickable to view grading */}
+                      <button
+                        onClick={() => navigate(`/grading/${exam.id}`)}
+                        className="min-w-0 text-left flex-1 hover:opacity-80 transition-opacity mb-3 sm:mb-0"
+                      >
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="font-medium text-text-primary">{exam.title}</span>
+                          <Badge variant={exam.is_finalized ? 'success' : 'warning'} size="sm">
+                            {exam.is_finalized ? (
+                              <><CheckCircle className="w-3 h-3 mr-1" />Finalized</>
+                            ) : (
+                              'Draft'
+                            )}
+                          </Badge>
+                          {exam.end_time && statusBadge}
+                        </div>
+                        <p className="text-xs text-text-muted">
+                          {exam.subject} · {exam.question_count} questions · {exam.total_marks} marks
+                          {exam.submission_count > 0 && ` · ${exam.submission_count} submissions`}
+                        </p>
+                      </button>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          leftIcon={<Pencil className="w-4 h-4" />}
+                          onClick={() => navigate(`/exams/${exam.id}/edit`)}
+                          disabled={exam.is_finalized}
+                          title={exam.is_finalized ? 'Cannot edit finalized exams' : 'Edit exam'}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          leftIcon={<Trash2 className="w-4 h-4" />}
+                          onClick={() => setExamToDelete(exam)}
+                          disabled={exam.is_finalized}
+                          title={exam.is_finalized ? 'Cannot delete finalized exams' : 'Delete exam'}
+                        >
+                          Delete
+                        </Button>
                       </div>
-                      <p className="text-xs text-text-muted">
-                        {exam.subject} · {exam.question_count} questions · {exam.total_marks} marks
-                        {exam.submission_count > 0 && ` · ${exam.submission_count} submissions`}
-                      </p>
                     </div>
-                  </button>
-                ))
+                  );
+                })
               )}
             </div>
           )}
@@ -343,6 +444,35 @@ export default function ClassDetail() {
             loadClassData();
           }}
         />
+      )}
+
+      {/* Delete Exam Confirmation */}
+      {examToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setExamToDelete(null)} />
+          <div className="relative bg-bg-secondary border border-border rounded-2xl w-full max-w-md p-6 animate-scale-in">
+            <h3 className="text-lg font-semibold text-text-primary mb-2">Delete Exam</h3>
+            <p className="text-sm text-text-secondary mb-4">
+              Are you sure you want to delete <strong>{examToDelete.title}</strong>? This action
+              cannot be undone.
+            </p>
+            <Alert variant="warning" className="mb-4">
+              Only draft exams can be deleted. Finalized exams are permanent.
+            </Alert>
+            <div className="flex justify-end gap-3">
+              <Button variant="ghost" onClick={() => setExamToDelete(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={handleDeleteExam}
+                isLoading={isDeleting}
+              >
+                {isDeleting ? 'Deleting…' : 'Delete Exam'}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </DashboardLayout>
   );

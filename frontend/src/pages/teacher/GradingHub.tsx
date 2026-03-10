@@ -59,8 +59,8 @@ export default function GradingHub() {
 
   return (
     <DashboardLayout
-      title="Grading"
-      subtitle="Review and grade student submissions"
+      title="Grade Submissions"
+      subtitle="Review AI-assisted grades and finalize student marks"
     >
       {error && (
         <Alert variant="error" className="mb-6" onDismiss={() => setError(null)}>

@@ -42,8 +42,12 @@ const SubmitExam = lazy(() =>
 const TeacherDashboard = lazy(() => import('@/pages/teacher/TeacherDashboard'));
 const ClassManagement = lazy(() => import('@/pages/teacher/ClassManagement'));
 const ClassDetail = lazy(() => import('@/pages/teacher/ClassDetail'));
+const ExamManagement = lazy(() => import('@/pages/teacher/ExamManagement'));
+const EditExam = lazy(() => import('@/pages/teacher/EditExam'));
 const GradingHub = lazy(() => import('@/pages/teacher/GradingHub'));
-const GradingInterface = lazy(() => import('@/pages/teacher/GradingInterface'));
+const GradingInterface = lazy(
+  () => import('@/pages/teacher/GradingInterface'),
+);
 
 // Student
 const StudentDashboard = lazy(() => import('@/pages/student/StudentDashboard'));
@@ -329,7 +333,15 @@ function AppRoutes() {
           path="/exams"
           element={
             <ProtectedRoute requiredRole="teacher">
-              <GradingHub />
+              <ExamManagement />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/exams/:examId/edit"
+          element={
+            <ProtectedRoute requiredRole="teacher">
+              <EditExam />
             </ProtectedRoute>
           }
         />

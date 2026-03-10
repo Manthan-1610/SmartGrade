@@ -28,8 +28,8 @@ interface NavItem {
 const teacherNav: NavItem[] = [
   { label: 'Dashboard', path: '/dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
   { label: 'Classes', path: '/classes', icon: <BookOpen className="w-5 h-5" /> },
-  { label: 'Exams', path: '/exams', icon: <FileText className="w-5 h-5" /> },
-  { label: 'Grading', path: '/grading', icon: <BarChart3 className="w-5 h-5" /> },
+  { label: 'Exam Templates', path: '/exams', icon: <FileText className="w-5 h-5" /> },
+  { label: 'Grade Submissions', path: '/grading', icon: <BarChart3 className="w-5 h-5" /> },
 ];
 
 const studentNav: NavItem[] = [

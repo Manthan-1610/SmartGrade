@@ -1,9 +1,13 @@
 /**
  * SubmitExam Page
- * 
+ *
  * Student exam submission flow:
  * 1. Select exam → 2. Upload image/PDF → 3. Verify extracted text → 4. Success with receipt
- * 
+ *
+ * Access controls:
+ *  - Before `start_time`  → shows "Exam has not started yet" and blocks access.
+ *  - After `end_time` + grace → shows "Deadline passed" and blocks submission.
+ *
  * Features:
  * - Countdown timer with server time sync
  * - Support for JPG, PNG, and PDF uploads
@@ -14,25 +18,57 @@ import { ImageCapture } from '@/components/ImageCapture';
 import { VerificationUI } from '@/components/VerificationUI';
 import { CountdownTimer } from '@/components/CountdownTimer';
 import { api, examsApi } from '@/lib/api';
-import type { 
-  ExamResponse, 
+import type {
+  ExamResponse,
   ExamListItem,
   ExamTimeInfo,
-  ExtractedAnswer, 
-  VerifiedAnswer 
+  ExtractedAnswer,
+  VerifiedAnswer,
 } from '@/lib/types';
-import { 
-  GraduationCap, 
-  CheckCircle2, 
+import {
+  GraduationCap,
+  CheckCircle2,
   Upload,
   FileText,
   ArrowLeft,
   User,
   Copy,
   Check,
-  Shield
+  Shield,
+  Clock,
+  Ban,
+  Timer,
+  AlertTriangle,
 } from 'lucide-react';
-import { Alert } from '@/components/ui';
+import { Alert, Badge } from '@/components/ui';
+
+// ---- Exam status utilities (mirrored from StudentDashboard) ----
+
+type ExamStatus = 'not_started' | 'open' | 'ended';
+
+function getExamStatus(exam: ExamListItem): ExamStatus {
+  const now = new Date();
+  if (exam.start_time && now < new Date(exam.start_time)) return 'not_started';
+  if (exam.end_time && now > new Date(exam.end_time)) return 'ended';
+  return 'open';
+}
+
+function relativeTime(iso: string): string {
+  const target = new Date(iso);
+  const now = new Date();
+  const diffMs = target.getTime() - now.getTime();
+  const absDiff = Math.abs(diffMs);
+  const minutes = Math.floor(absDiff / 60_000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  const label =
+    days > 0
+      ? `${days}d ${hours % 24}h`
+      : hours > 0
+        ? `${hours}h ${minutes % 60}m`
+        : `${minutes}m`;
+  return diffMs > 0 ? `in ${label}` : `${label} ago`;
+}
 
 type Step = 'select-exam' | 'capture' | 'verify' | 'success';
 
@@ -81,21 +117,29 @@ export function SubmitExam() {
         api.getExam(examId),
         examsApi.getTimeInfo(examId),
       ]);
-      
+
       setSelectedExam(exam);
       setTimeInfo(timeInfoData);
-      
-      // Check if exam is open
+
+      // --- Guard: exam has not started yet ---
+      if (!timeInfoData.is_open && !timeInfoData.is_expired) {
+        const startLabel = timeInfoData.start_time
+          ? new Date(timeInfoData.start_time).toLocaleString()
+          : 'a later time';
+        setError(
+          `This exam has not started yet. It is scheduled to begin at ${startLabel}. Please come back then.`,
+        );
+        return;
+      }
+
+      // --- Guard: exam deadline has passed ---
       if (timeInfoData.is_expired) {
-        setError('This exam has ended. You cannot submit anymore.');
+        setError(
+          'The submission deadline for this exam has passed (including any grace period). You can no longer submit.',
+        );
         return;
       }
-      
-      if (!timeInfoData.is_open) {
-        setError('This exam has not started yet. Please wait until the scheduled time.');
-        return;
-      }
-      
+
       setStep('capture');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load exam');
@@ -104,8 +148,11 @@ export function SubmitExam() {
     }
   };
 
+  const [isExamExpired, setIsExamExpired] = useState(false);
+
   const handleTimeExpired = () => {
-    setError('Time has expired! You can no longer submit.');
+    setIsExamExpired(true);
+    setError('Time has expired! The submission deadline has passed. You can no longer submit.');
   };
 
   const handleImageSelect = async (file: File) => {
@@ -181,6 +228,7 @@ export function SubmitExam() {
     setStudentName('');
     setStudentId('');
     setError(null);
+    setIsExamExpired(false);
   };
 
   const copyReceipt = async () => {
@@ -299,32 +347,79 @@ export function SubmitExam() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {exams.map((exam) => (
-                    <button
-                      key={exam.id}
-                      onClick={() => handleSelectExam(exam.id)}
-                      disabled={isLoading}
-                      className="text-left p-4 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-all group"
-                    >
-                      <h3 className="font-medium text-text-primary group-hover:text-primary">
-                        {exam.title}
-                      </h3>
-                      <p className="text-sm text-text-secondary mt-1">
-                        {exam.subject}
-                      </p>
-                      <div className="flex items-center gap-3 mt-3 text-xs text-text-muted">
-                        <span>{exam.question_count} questions</span>
-                        <span>•</span>
-                        <span>{exam.total_marks} marks</span>
-                        {exam.end_time && (
-                          <>
-                            <span>•</span>
-                            <span>Due: {new Date(exam.end_time).toLocaleDateString()}</span>
-                          </>
+                  {exams.map((exam) => {
+                    const status = getExamStatus(exam);
+                    const isClickable = status === 'open';
+
+                    return (
+                      <button
+                        key={exam.id}
+                        onClick={() => {
+                          if (isClickable) handleSelectExam(exam.id);
+                        }}
+                        disabled={isLoading || !isClickable}
+                        className={`text-left p-4 rounded-lg border transition-all group ${
+                          isClickable
+                            ? 'border-border hover:border-primary hover:bg-primary/5 cursor-pointer'
+                            : 'border-border/60 bg-bg-secondary/50 opacity-70 cursor-not-allowed'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className={`font-medium ${isClickable ? 'text-text-primary group-hover:text-primary' : 'text-text-muted'}`}>
+                            {exam.title}
+                          </h3>
+
+                          {/* Status badge */}
+                          {status === 'not_started' && (
+                            <Badge variant="warning" size="sm">
+                              <Timer className="w-3 h-3 mr-1" />
+                              Not Yet Started
+                            </Badge>
+                          )}
+                          {status === 'open' && (
+                            <Badge variant="success" size="sm">
+                              <Clock className="w-3 h-3 mr-1" />
+                              Open
+                            </Badge>
+                          )}
+                          {status === 'ended' && (
+                            <Badge variant="danger" size="sm">
+                              <Ban className="w-3 h-3 mr-1" />
+                              Ended
+                            </Badge>
+                          )}
+                        </div>
+
+                        <p className="text-sm text-text-secondary mt-1">{exam.subject}</p>
+
+                        <div className="flex items-center gap-3 mt-3 text-xs text-text-muted flex-wrap">
+                          <span>{exam.question_count} questions</span>
+                          <span>•</span>
+                          <span>{exam.total_marks} marks</span>
+                        </div>
+
+                        {/* Contextual timing message */}
+                        {status === 'not_started' && exam.start_time && (
+                          <p className="text-xs text-warning mt-2 flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                            Exam begins {relativeTime(exam.start_time)} ({new Date(exam.start_time).toLocaleString()})
+                          </p>
                         )}
-                      </div>
-                    </button>
-                  ))}
+                        {status === 'open' && exam.end_time && (
+                          <p className="text-xs text-success mt-2 flex items-center gap-1">
+                            <Clock className="w-3 h-3 flex-shrink-0" />
+                            Due {relativeTime(exam.end_time)} ({new Date(exam.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                          </p>
+                        )}
+                        {status === 'ended' && exam.end_time && (
+                          <p className="text-xs text-danger mt-2 flex items-center gap-1">
+                            <Ban className="w-3 h-3 flex-shrink-0" />
+                            Ended {relativeTime(exam.end_time)}
+                          </p>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -388,24 +483,41 @@ export function SubmitExam() {
             </div>
 
             {/* Image Capture */}
-            <div className="rounded-xl border border-border bg-bg-card p-6 shadow-lg">
+            <div className={`rounded-xl border bg-bg-card p-6 shadow-lg ${isExamExpired ? 'border-danger/40 opacity-60' : 'border-border'}`}>
               <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-secondary/20 rounded-lg">
-                  <Upload className="w-6 h-6 text-secondary" />
+                <div className={`p-2 rounded-lg ${isExamExpired ? 'bg-danger/20' : 'bg-secondary/20'}`}>
+                  {isExamExpired ? (
+                    <Ban className="w-6 h-6 text-danger" />
+                  ) : (
+                    <Upload className="w-6 h-6 text-secondary" />
+                  )}
                 </div>
                 <div>
-                  <h2 className="text-xl font-semibold">Upload Answer Sheet</h2>
+                  <h2 className="text-xl font-semibold">
+                    {isExamExpired ? 'Submission Closed' : 'Upload Answer Sheet'}
+                  </h2>
                   <p className="text-sm text-text-secondary">
-                    Upload a clear photo (.jpg, .png) or PDF of your handwritten exam paper
+                    {isExamExpired
+                      ? 'The deadline has passed. Uploads are no longer accepted.'
+                      : 'Upload a clear photo (.jpg, .png) or PDF of your handwritten exam paper'}
                   </p>
                 </div>
               </div>
 
-              <ImageCapture
-                onImageSelect={handleImageSelect}
-                isProcessing={isLoading}
-                progress={progress}
-              />
+              {isExamExpired ? (
+                <div className="flex flex-col items-center py-8 text-center">
+                  <AlertTriangle className="w-12 h-12 text-danger mb-4" />
+                  <p className="text-text-secondary">
+                    The submission window has closed. Please contact your teacher if you believe this is an error.
+                  </p>
+                </div>
+              ) : (
+                <ImageCapture
+                  onImageSelect={handleImageSelect}
+                  isProcessing={isLoading}
+                  progress={progress}
+                />
+              )}
             </div>
           </div>
         )}
