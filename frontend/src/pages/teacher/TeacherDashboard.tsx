@@ -26,7 +26,54 @@ import {
   Building2,
   BarChart3,
   ArrowRight,
+  Clock,
+  Timer,
+  Ban,
+  CheckCircle,
 } from 'lucide-react';
+
+// ---- Exam status utilities ----
+
+type ExamTimeStatus = 'not_started' | 'open' | 'ended';
+
+/**
+ * Determine the live timing status of an exam based on start/end times.
+ * Note: This is separate from finalized/draft status.
+ */
+function getExamTimeStatus(exam: ExamListItem): ExamTimeStatus {
+  const now = new Date();
+
+  if (exam.start_time && now < new Date(exam.start_time)) {
+    return 'not_started';
+  }
+
+  if (exam.end_time && now > new Date(exam.end_time)) {
+    return 'ended';
+  }
+
+  return 'open';
+}
+
+/** Human-readable relative time until or since a date. */
+function relativeTime(iso: string): string {
+  const target = new Date(iso);
+  const now = new Date();
+  const diffMs = target.getTime() - now.getTime();
+  const absDiff = Math.abs(diffMs);
+
+  const minutes = Math.floor(absDiff / 60_000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  const label =
+    days > 0
+      ? `${days}d ${hours % 24}h`
+      : hours > 0
+        ? `${hours}h ${minutes % 60}m`
+        : `${minutes}m`;
+
+  return diffMs > 0 ? `in ${label}` : `${label} ago`;
+}
 
 export default function TeacherDashboard() {
   const navigate = useNavigate();
@@ -308,27 +355,92 @@ function ExamCard({
   exam: ExamListItem;
   onClick: () => void;
 }) {
+  const timeStatus = getExamTimeStatus(exam);
+
+  // Determine badge based on finalized status AND time status
+  const getBadge = () => {
+    if (!exam.is_finalized) {
+      return (
+        <Badge variant="default" size="sm">
+          <Clock className="w-3 h-3 mr-1" />
+          Draft
+        </Badge>
+      );
+    }
+
+    // Finalized exam — show time-based status
+    if (timeStatus === 'not_started') {
+      return (
+        <Badge variant="warning" size="sm">
+          <Timer className="w-3 h-3 mr-1" />
+          Scheduled
+        </Badge>
+      );
+    }
+    if (timeStatus === 'ended') {
+      return (
+        <Badge variant="danger" size="sm">
+          <Ban className="w-3 h-3 mr-1" />
+          Closed
+        </Badge>
+      );
+    }
+    // open
+    return (
+      <Badge variant="success" size="sm">
+        <CheckCircle className="w-3 h-3 mr-1" />
+        Active
+      </Badge>
+    );
+  };
+
   return (
     <button
       onClick={onClick}
       className="p-4 bg-bg-card border border-border rounded-xl hover:border-primary/50 hover:bg-primary/5 transition-all text-left group animate-fade-in"
     >
-      <div className="flex items-start justify-between mb-2">
+      <div className="flex items-start justify-between mb-2 gap-2">
         <h3 className="font-medium text-text-primary group-hover:text-primary transition-colors truncate">
           {exam.title}
         </h3>
-        <Badge variant={exam.is_finalized ? 'success' : 'default'}>
-          {exam.is_finalized ? 'Active' : 'Draft'}
-        </Badge>
+        {getBadge()}
       </div>
       <p className="text-xs text-text-muted mb-2 truncate">{exam.subject}</p>
-      <div className="flex items-center gap-4 text-xs text-text-secondary">
+      <div className="flex items-center gap-3 text-xs text-text-secondary flex-wrap">
         <span>{exam.question_count} questions</span>
+        <span>·</span>
         <span>{exam.total_marks} marks</span>
         {exam.submission_count > 0 && (
-          <span className="text-warning">{exam.submission_count} submissions</span>
+          <>
+            <span>·</span>
+            <span className="text-warning">{exam.submission_count} submissions</span>
+          </>
         )}
       </div>
+
+      {/* Time context line */}
+      {exam.is_finalized && (
+        <div className="mt-2 text-xs text-text-muted flex items-center gap-1">
+          {timeStatus === 'not_started' && exam.start_time && (
+            <>
+              <Timer className="w-3 h-3 text-warning" />
+              <span>Starts {relativeTime(exam.start_time)}</span>
+            </>
+          )}
+          {timeStatus === 'open' && exam.end_time && (
+            <>
+              <Clock className="w-3 h-3 text-success" />
+              <span>Closes {relativeTime(exam.end_time)}</span>
+            </>
+          )}
+          {timeStatus === 'ended' && exam.end_time && (
+            <>
+              <Ban className="w-3 h-3 text-danger" />
+              <span>Closed {relativeTime(exam.end_time)}</span>
+            </>
+          )}
+        </div>
+      )}
     </button>
   );
 }
