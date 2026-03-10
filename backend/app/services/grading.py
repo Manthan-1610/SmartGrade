@@ -552,6 +552,13 @@ def get_exam_submission_summary(
     Get a comprehensive summary of an exam's submissions and missed students.
     
     Includes counts, submission list, and missed student list.
+    
+    Note: Submissions are split into two categories:
+    - Actual submissions (is_missed=False): Students who submitted their work
+    - Marked absent (is_missed=True): Students who were marked as absent by teacher
+    
+    The "missed_students" list contains students who haven't submitted AND haven't
+    been marked as absent yet.
     """
     exam = get_exam(exam_id, session)
     cls = session.get(Class, exam.class_id)
@@ -568,7 +575,7 @@ def get_exam_submission_summary(
         )
     ).one()
 
-    # Get submissions with student info
+    # Get ALL submissions with student info (both actual and missed)
     stmt = (
         select(Submission, User)
         .join(User, Submission.student_id == User.id)
@@ -577,7 +584,9 @@ def get_exam_submission_summary(
     )
     results = session.exec(stmt).all()
 
-    submissions = []
+    # Separate actual submissions from marked-absent submissions
+    actual_submissions = []
+    marked_absent_submissions = []
     graded_count = 0
     published_count = 0
 
@@ -598,7 +607,7 @@ def get_exam_submission_summary(
         if is_published:
             published_count += 1
 
-        submissions.append(SubmissionListResponse(
+        submission_response = SubmissionListResponse(
             id=sub.id,
             exam_id=sub.exam_id,
             exam_title=exam.title,
@@ -607,27 +616,36 @@ def get_exam_submission_summary(
             student_email=student.email,
             status=sub.status,
             is_verified=sub.is_verified,
-            is_missed=sub.is_missed,  # Use database field
+            is_missed=sub.is_missed,
             submitted_at=sub.submitted_at,
             created_at=sub.created_at,
             answer_count=answer_count,
             total_marks=exam.total_marks,
             obtained_marks=obtained_marks,
-        ))
+        )
 
-    # Get missed students
+        # Separate actual submissions from marked-absent ones
+        if sub.is_missed:
+            marked_absent_submissions.append(submission_response)
+        else:
+            actual_submissions.append(submission_response)
+
+    # Get missed students (those who haven't submitted AND haven't been marked absent)
     missed_students = get_missed_students(exam_id, teacher, session)
 
+    # Count only actual submissions for submitted_count
+    # marked_absent_submissions are not "submitted" - they're marked as absent
     return ExamSubmissionSummary(
         exam_id=exam.id,
         exam_title=exam.title,
         total_enrolled=total_enrolled,
-        submitted_count=len(submissions),
-        missed_count=len(missed_students),
+        submitted_count=len(actual_submissions),  # Only actual submissions
+        missed_count=len(missed_students) + len(marked_absent_submissions),  # Unmarked + marked absent
         graded_count=graded_count,
         published_count=published_count,
-        submissions=submissions,
-        missed_students=missed_students,
+        submissions=actual_submissions,  # Only actual submissions
+        missed_students=missed_students,  # Only unmarked missed students
+        marked_absent=marked_absent_submissions,  # Students marked as absent by teacher
     )
 
 

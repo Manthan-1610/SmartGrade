@@ -60,6 +60,7 @@ export default function GradingInterface() {
   const [summary, setSummary] = useState<ExamSubmissionSummary | null>(null);
   const [submissions, setSubmissions] = useState<SubmissionListItem[]>([]);
   const [missedStudents, setMissedStudents] = useState<MissedStudentResponse[]>([]);
+  const [markedAbsent, setMarkedAbsent] = useState<SubmissionListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,7 +78,7 @@ export default function GradingInterface() {
 
   // Missed students state
   const [isMarkingMissed, setIsMarkingMissed] = useState(false);
-  const [activeTab, setActiveTab] = useState<'submissions' | 'missed'>('submissions');
+  const [activeTab, setActiveTab] = useState<'submissions' | 'missed' | 'absent'>('submissions');
 
   /* ---------- Data Loading ---------- */
 
@@ -94,6 +95,7 @@ export default function GradingInterface() {
       setSummary(summaryData);
       setSubmissions(summaryData.submissions);
       setMissedStudents(summaryData.missed_students);
+      setMarkedAbsent(summaryData.marked_absent || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load exam data');
     } finally {
@@ -286,36 +288,47 @@ export default function GradingInterface() {
       )}
 
       <div className="flex flex-col lg:flex-row gap-6">
-        {/* Left Panel: Submissions/Missed Tabs */}
+        {/* Left Panel: Submissions/Missed/Absent Tabs */}
         <div className="lg:w-80 flex-shrink-0">
           <div className="bg-bg-card border border-border rounded-xl">
-            {/* Tab Headers */}
+            {/* Tab Headers - Three tabs */}
             <div className="flex border-b border-border">
               <button
                 onClick={() => setActiveTab('submissions')}
-                className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                className={`flex-1 px-3 py-3 text-xs font-medium flex flex-col items-center justify-center gap-1 transition-colors ${
                   activeTab === 'submissions'
                     ? 'text-primary border-b-2 border-primary bg-primary/5'
                     : 'text-text-muted hover:text-text-secondary'
                 }`}
               >
                 <Users className="w-4 h-4" />
-                Submitted ({submissions.length})
+                <span>Submitted ({submissions.length})</span>
               </button>
               <button
                 onClick={() => setActiveTab('missed')}
-                className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                className={`flex-1 px-3 py-3 text-xs font-medium flex flex-col items-center justify-center gap-1 transition-colors ${
                   activeTab === 'missed'
+                    ? 'text-warning border-b-2 border-warning bg-warning/5'
+                    : 'text-text-muted hover:text-text-secondary'
+                }`}
+              >
+                <AlertTriangle className="w-4 h-4" />
+                <span>Pending ({missedStudents.length})</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('absent')}
+                className={`flex-1 px-3 py-3 text-xs font-medium flex flex-col items-center justify-center gap-1 transition-colors ${
+                  activeTab === 'absent'
                     ? 'text-danger border-b-2 border-danger bg-danger/5'
                     : 'text-text-muted hover:text-text-secondary'
                 }`}
               >
                 <UserX className="w-4 h-4" />
-                Missed ({missedStudents.length})
+                <span>Absent ({markedAbsent.length})</span>
               </button>
             </div>
 
-            {/* Submissions Tab */}
+            {/* Submissions Tab - Actual student submissions */}
             {activeTab === 'submissions' && (
               <>
                 {submissions.length === 0 ? (
@@ -340,29 +353,21 @@ export default function GradingInterface() {
                             </p>
                             <Badge
                               variant={
-                                sub.is_missed
-                                  ? 'danger'
-                                  : sub.status === 'graded'
-                                    ? 'success'
-                                    : sub.is_verified
-                                      ? 'primary'
-                                      : 'warning'
+                                sub.status === 'graded'
+                                  ? 'success'
+                                  : sub.is_verified
+                                    ? 'primary'
+                                    : 'warning'
                               }
                               size="sm"
                             >
-                              {sub.is_missed ? 'Absent' : sub.status}
+                              {sub.status}
                             </Badge>
                           </div>
                           <div className="flex items-center gap-2 text-xs text-text-muted">
-                            {sub.is_missed ? (
-                              <span className="text-danger">No submission · 0 marks</span>
-                            ) : (
-                              <>
-                                <span>{sub.answer_count} answers</span>
-                                <span>·</span>
-                                <span>{new Date(sub.submitted_at).toLocaleString()}</span>
-                              </>
-                            )}
+                            <span>{sub.answer_count} answers</span>
+                            <span>·</span>
+                            <span>{new Date(sub.submitted_at).toLocaleString()}</span>
                           </div>
                         </button>
                       </li>
@@ -372,18 +377,18 @@ export default function GradingInterface() {
               </>
             )}
 
-            {/* Missed Students Tab */}
+            {/* Missed Students Tab - Students who haven't submitted AND haven't been marked absent */}
             {activeTab === 'missed' && (
               <>
                 {missedStudents.length === 0 ? (
                   <div className="p-6 text-center text-text-muted text-sm">
                     <CheckCircle className="w-8 h-8 mx-auto mb-2 text-success" />
-                    <p>All enrolled students have submitted!</p>
+                    <p>All students have submitted or been marked!</p>
                   </div>
                 ) : (
                   <div>
                     {/* Bulk Action */}
-                    <div className="p-3 border-b border-border bg-danger/5">
+                    <div className="p-3 border-b border-border bg-warning/5">
                       <Button
                         variant="danger"
                         size="sm"
@@ -392,7 +397,7 @@ export default function GradingInterface() {
                         onClick={handleMarkAllMissed}
                         isLoading={isMarkingMissed}
                       >
-                        Mark All as Zero ({missedStudents.length})
+                        Mark All as Absent ({missedStudents.length})
                       </Button>
                     </div>
                     <ul className="divide-y divide-border max-h-[calc(100vh-420px)] overflow-y-auto">
@@ -408,9 +413,9 @@ export default function GradingInterface() {
                                 {student.student_email}
                               </p>
                             </div>
-                            <Badge variant="danger" size="sm">
-                              <UserX className="w-3 h-3 mr-1" />
-                              Missed
+                            <Badge variant="warning" size="sm">
+                              <AlertTriangle className="w-3 h-3 mr-1" />
+                              Pending
                             </Badge>
                           </div>
                           {student.had_extension && student.extended_deadline && (
@@ -419,19 +424,61 @@ export default function GradingInterface() {
                             </p>
                           )}
                           <Button
-                            variant="secondary"
+                            variant="danger"
                             size="sm"
                             className="w-full"
                             leftIcon={<Ban className="w-3.5 h-3.5" />}
                             onClick={() => handleMarkStudentMissed(student.student_id)}
                             disabled={isMarkingMissed}
                           >
-                            Mark as Zero
+                            Mark as Absent (Zero)
                           </Button>
                         </li>
                       ))}
                     </ul>
                   </div>
+                )}
+              </>
+            )}
+
+            {/* Absent Tab - Students who were marked as absent by teacher */}
+            {activeTab === 'absent' && (
+              <>
+                {markedAbsent.length === 0 ? (
+                  <div className="p-6 text-center text-text-muted text-sm">
+                    <CheckCircle className="w-8 h-8 mx-auto mb-2 text-success" />
+                    <p>No students marked as absent.</p>
+                  </div>
+                ) : (
+                  <ul className="divide-y divide-border max-h-[calc(100vh-360px)] overflow-y-auto">
+                    {markedAbsent.map((sub) => (
+                      <li key={sub.id}>
+                        <button
+                          onClick={() => loadSubmissionDetail(sub.id)}
+                          className={`w-full text-left p-4 hover:bg-bg-hover transition-colors ${
+                            activeSubmission?.id === sub.id
+                              ? 'bg-danger/5 border-l-2 border-l-danger'
+                              : ''
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="font-medium text-text-primary text-sm truncate">
+                              {sub.student_name || 'Unknown Student'}
+                            </p>
+                            <Badge variant="danger" size="sm">
+                              <UserX className="w-3 h-3 mr-1" />
+                              Absent
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-danger">
+                            <span>No submission</span>
+                            <span>·</span>
+                            <span>0/{sub.total_marks} marks</span>
+                          </div>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </>
             )}

@@ -371,12 +371,13 @@ export interface ExamSubmissionSummary {
   exam_id: string;
   exam_title: string;
   total_enrolled: number;
-  submitted_count: number;
-  missed_count: number;
+  submitted_count: number;  // Count of actual submissions only
+  missed_count: number;     // Count of unmarked missed + marked absent
   graded_count: number;
   published_count: number;
-  submissions: SubmissionListItem[];
-  missed_students: MissedStudentResponse[];
+  submissions: SubmissionListItem[];           // Actual submissions
+  missed_students: MissedStudentResponse[];    // Unmarked missed students
+  marked_absent: SubmissionListItem[];         // Students marked absent by teacher
 }
 
 // ============ Grading Types ============

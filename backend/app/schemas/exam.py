@@ -315,16 +315,23 @@ class MissedStudentResponse(BaseModel):
 
 
 class ExamSubmissionSummary(BaseModel):
-    """Summary of exam submissions including missed students."""
+    """Summary of exam submissions including missed students.
+    
+    Submissions are categorized into:
+    - submissions: Students who actually submitted their work
+    - missed_students: Students who haven't submitted and haven't been marked yet
+    - marked_absent: Students who were marked as absent (zero grade) by the teacher
+    """
     exam_id: uuid.UUID
     exam_title: str
     total_enrolled: int
-    submitted_count: int
-    missed_count: int
+    submitted_count: int  # Count of actual submissions only
+    missed_count: int     # Count of unmarked missed + marked absent
     graded_count: int
     published_count: int
-    submissions: List[SubmissionListResponse] = []
-    missed_students: List[MissedStudentResponse] = []
+    submissions: List[SubmissionListResponse] = []           # Actual submissions
+    missed_students: List[MissedStudentResponse] = []        # Unmarked missed students
+    marked_absent: List[SubmissionListResponse] = []         # Students marked absent by teacher
 
     model_config = {"from_attributes": True}
 
