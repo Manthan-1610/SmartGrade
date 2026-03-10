@@ -411,6 +411,7 @@ export interface StudentExamResult {
   obtained_marks: number;
   percentage: number;
   is_published: boolean;
+  is_missed: boolean; // True if the student didn't submit and was marked absent
   answers: StudentAnswerResponse[];
 }
 

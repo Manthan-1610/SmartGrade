@@ -361,6 +361,7 @@ def get_student_result(
         obtained_marks=obtained,
         percentage=round(percentage, 2),
         is_published=exam.is_published,
+        is_missed=submission.is_missed,
         answers=[
             StudentAnswerResponse(
                 id=a.id,
@@ -422,6 +423,7 @@ def get_student_results_overview(
             obtained_marks=obtained,
             percentage=round(percentage, 2),
             is_published=exam.is_published,
+            is_missed=sub.is_missed,
             answers=[],  # Omit answers in overview
         ))
 

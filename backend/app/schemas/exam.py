@@ -359,6 +359,7 @@ class StudentExamResult(BaseModel):
     obtained_marks: float
     percentage: float
     is_published: bool
+    is_missed: bool = False  # True if the student didn't submit and was marked absent
     answers: List[StudentAnswerResponse] = []
 
     model_config = {"from_attributes": True}

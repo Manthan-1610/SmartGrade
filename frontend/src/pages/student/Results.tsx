@@ -22,6 +22,7 @@ import {
   AlertTriangle,
   CheckCircle,
   XCircle,
+  UserX,
 } from 'lucide-react';
 
 /**
@@ -104,25 +105,41 @@ export default function Results() {
             <button
               key={result.exam_id}
               onClick={() => navigate(`/results/${result.exam_id}`)}
-              className="w-full flex items-center justify-between bg-bg-card border border-border rounded-xl px-5 py-4 hover:border-primary/40 hover:shadow-lg transition-all text-left animate-fade-in"
+              className={`w-full flex items-center justify-between bg-bg-card border rounded-xl px-5 py-4 hover:shadow-lg transition-all text-left animate-fade-in ${
+                result.is_missed
+                  ? 'border-danger/50 bg-danger/5 hover:border-danger'
+                  : 'border-border hover:border-primary/40'
+              }`}
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="font-medium text-text-primary">{result.exam_title}</span>
                   <Badge variant="primary" size="sm">{result.subject}</Badge>
+                  {result.is_missed && (
+                    <Badge variant="danger" size="sm">
+                      <UserX className="w-3 h-3 mr-1" />
+                      Absent
+                    </Badge>
+                  )}
                 </div>
                 <p className="text-xs text-text-muted">
-                  {result.answers.length} questions · {result.total_marks} total marks
+                  {result.is_missed
+                    ? 'You did not submit this exam'
+                    : `${result.answers.length} questions · ${result.total_marks} total marks`}
                 </p>
               </div>
               <div className="flex items-center gap-3 flex-shrink-0 ml-4">
                 <div className="text-right">
-                  <p className="text-lg font-bold text-text-primary">
+                  <p className={`text-lg font-bold ${result.is_missed ? 'text-danger' : 'text-text-primary'}`}>
                     {result.obtained_marks}/{result.total_marks}
                   </p>
                   <p className="text-xs text-text-muted">{result.percentage}%</p>
                 </div>
-                <ScoreIndicator percentage={result.percentage} />
+                {result.is_missed ? (
+                  <UserX className="w-6 h-6 text-danger" />
+                ) : (
+                  <ScoreIndicator percentage={result.percentage} />
+                )}
               </div>
             </button>
           ))}
@@ -201,6 +218,27 @@ export function ResultDetail() {
           description="This result doesn't exist or hasn't been published yet."
           action={<Button onClick={() => navigate('/results')}>Back to Results</Button>}
         />
+      ) : result.is_missed ? (
+        /* Missed Exam View */
+        <div className="space-y-6">
+          <div className="bg-danger/10 border border-danger/30 rounded-xl p-8 text-center">
+            <UserX className="w-16 h-16 text-danger mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-text-primary mb-2">Exam Not Submitted</h2>
+            <p className="text-text-secondary mb-4">
+              You did not submit this exam before the deadline.
+            </p>
+            <div className="bg-bg-card border border-border rounded-lg p-4 max-w-xs mx-auto">
+              <p className="text-sm text-text-muted mb-1">Your Score</p>
+              <p className="text-3xl font-bold text-danger">
+                0<span className="text-lg text-text-muted">/{result.total_marks}</span>
+              </p>
+              <p className="text-sm text-danger mt-1">0%</p>
+            </div>
+            <p className="text-xs text-text-muted mt-4">
+              If you believe this is an error, please contact your teacher.
+            </p>
+          </div>
+        </div>
       ) : (
         <div className="space-y-6">
           {/* Score Summary */}
